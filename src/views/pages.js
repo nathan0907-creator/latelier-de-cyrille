@@ -194,6 +194,10 @@ function find(site) {
           <dt>Sur Facebook</dt>
           <dd>${contact.messenger ? html`<a class="link" href="${contact.messenger}" target="_blank" rel="noopener">Écrire sur Messenger</a>` : ''}${contact.messenger && contact.facebook ? html`<br>` : ''}${contact.facebook ? html`<a class="link" href="${contact.facebook}" target="_blank" rel="noopener">La page du salon</a>` : ''}</dd>
         </div>` : ''}
+        ${contact.google ? html`<div>
+          <dt>Sur Google</dt>
+          <dd><a class="link" href="${contact.google}" target="_blank" rel="noopener">La fiche du salon et les avis</a></dd>
+        </div>` : ''}
         ${config.booking.appointmentOnly ? html`<div>
           <dt>Accueil</dt>
           <dd><strong>${config.booking.appointmentOnly}</strong></dd>

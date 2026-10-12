@@ -59,7 +59,8 @@ function structuredData(site, { catalog = false, crumb = '', trail = [], schema 
         opens: fromMinutes(range.start),
         closes: fromMinutes(range.end),
       }))),
-    ...((config.contact.facebook || config.contact.instagram) && { sameAs: [config.contact.facebook, config.contact.instagram].filter(Boolean) }),
+    // Les autres pages du salon (Facebook, fiche Google…) : les moteurs de recherche font le lien.
+    ...((config.contact.facebook || config.contact.instagram || config.contact.google) && { sameAs: [config.contact.facebook, config.contact.instagram, config.contact.google].filter(Boolean) }),
     // Congés, jours fériés : les jours de fermeture à venir, pour que les horaires affichés par les
     // moteurs de recherche soient justes ces jours-là (ouverture et fermeture à minuit = fermé).
     ...((site.closures || []).length && {
@@ -225,6 +226,7 @@ function footer(site) {
             ${config.contact.messenger ? html`<li><a class="link" href="${config.contact.messenger}" target="_blank" rel="noopener">Messenger</a></li>` : ''}
             ${config.contact.facebook ? html`<li><a class="link" href="${config.contact.facebook}" target="_blank" rel="noopener">Facebook</a></li>` : ''}
             ${config.contact.instagram ? html`<li><a class="link" href="${config.contact.instagram}" target="_blank" rel="noopener">Instagram</a></li>` : ''}
+            ${config.contact.google ? html`<li><a class="link" href="${config.contact.google}" target="_blank" rel="noopener">Avis Google</a></li>` : ''}
           </ul>
         </div>
       </div>

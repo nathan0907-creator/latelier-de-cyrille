@@ -264,6 +264,21 @@ test('rappels : la réservation donne sa référence ; le serveur refuse les abo
   assert.equal(site.store.reminders.all().length, 0);
 });
 
+test('fiche Google : liée depuis le site et signalée aux moteurs de recherche, quand elle est renseignée', async t => {
+  const without = await startSite();
+  t.after(without.stop);
+  assert.doesNotMatch((await without.request('GET', '/nous-trouver')).text, /Avis Google|Sur Google/);
+
+  const google = 'https://maps.app.goo.gl/exemple';
+  const site = await startSite({ overrides: { contact: { phone: '01 99 00 00 00', google } } });
+  t.after(site.stop);
+  const page = (await site.request('GET', '/nous-trouver')).text;
+  assert.match(page, new RegExp(`<a class="link" href="${google}" target="_blank" rel="noopener">Avis Google</a>`));
+  assert.match(page, /<dt>Sur Google<\/dt>/);
+  const [salon] = JSON.parse(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(page)[1])['@graph'];
+  assert.deepEqual(salon.sameAs, [google]);
+});
+
 test('règles du salon : affichées quand elles sont renseignées, absentes sinon', async t => {
   const plain = await startSite();
   t.after(plain.stop);

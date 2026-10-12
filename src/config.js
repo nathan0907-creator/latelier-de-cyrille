@@ -52,7 +52,7 @@ function loadConfig(raw = require('../salon.config.js'), env = process.env) {
     description: raw.description || '',
     siteUrl,
     updated,
-    contact: { phone: '', email: '', instagram: '', ...raw.contact },
+    contact: { phone: '', email: '', instagram: '', google: '', ...raw.contact },
     address: { ...address, full: fullAddress },
     maps: {
       embed: `https://www.google.com/maps?q=${query}&output=embed`,

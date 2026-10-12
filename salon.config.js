@@ -41,6 +41,9 @@ module.exports = {
     facebook: 'https://www.facebook.com/latelierby',
     messenger: 'https://www.facebook.com/messages/t/latelierby/',
     instagram: '',
+    // La fiche Google du salon : dans Google Maps, ouvrir la fiche, « Partager », « Copier le lien ».
+    // Le site y renvoie (avis, itinéraire) et la signale aux moteurs de recherche.
+    google: '',
   },
 
   // Adresse (sert aussi à Google Maps)
