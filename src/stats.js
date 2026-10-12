@@ -79,8 +79,9 @@ function createStats({ store, clock, keepDays = 400, saveEveryMs = 30_000 }) {
     store.stats.save();
   }
 
-  const timer = setInterval(save, saveEveryMs);
-  timer.unref();
+  // Enregistré toutes les 30 secondes. saveEveryMs à 0 : c'est l'appelant qui enregistre (save).
+  const timer = saveEveryMs ? setInterval(save, saveEveryMs) : null;
+  timer?.unref();
 
   /** Les chiffres des `span` derniers jours, prêts à afficher. */
   function summary(span = 30) {

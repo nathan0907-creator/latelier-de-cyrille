@@ -87,6 +87,12 @@ function loadConfig(raw = require('../salon.config.js'), env = process.env) {
 
   const siteUrl = (raw.siteUrl || '').replace(/\/+$/, '');
 
+  // Date de la dernière mise à jour du contenu (plan du site) : celle du fichier de configuration.
+  let updated = '';
+  try {
+    updated = fs.statSync(path.join(__dirname, '..', 'salon.config.js')).mtime.toISOString().slice(0, 10);
+  } catch { /* fichier introuvable : la date du jour sera prise */ }
+
   return Object.freeze({
     name: raw.name.trim(),
     owner: raw.owner || '',
@@ -95,6 +101,7 @@ function loadConfig(raw = require('../salon.config.js'), env = process.env) {
     trade: raw.tagline || 'Salon de coiffure',
     description: raw.description || '',
     siteUrl,
+    updated,
     contact: { phone: '', email: '', instagram: '', ...raw.contact },
     address: { ...address, full: fullAddress },
     maps: {

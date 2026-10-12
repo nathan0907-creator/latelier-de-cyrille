@@ -165,6 +165,13 @@ function announce(booking) {
 
 // ── Connexion ─────────────────────────────────────────────────────────────
 
+/** Où trouver le code de configuration, selon l'endroit où tourne le site. */
+const CODE_HINTS = {
+  console: 'Il est affiché dans la fenêtre du serveur, au démarrage.',
+  secret: "C'est la valeur du secret SETUP_CODE, dans les réglages du site sur Cloudflare.",
+};
+let codeSource = 'console';
+
 function showAuth(mode, notice = '') {
   disconnect();
   closeSheets();
@@ -185,8 +192,8 @@ function showAuth(mode, notice = '') {
     setup && field({
       id: 'acces-code',
       label: 'Code de configuration',
-      hint: 'Il est affiché dans la fenêtre du serveur, au démarrage.',
-      control: h('input', { name: 'code', type: 'text', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', maxlength: '12', required: true }),
+      hint: CODE_HINTS[codeSource] || CODE_HINTS.console,
+      control: h('input', { name: 'code', type: 'text', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', maxlength: '64', required: true }),
     }),
     field({
       id: 'acces-mot-de-passe',
@@ -1062,6 +1069,7 @@ function openPassword() {
 async function start() {
   try {
     const session = await api('/api/salon/session');
+    codeSource = session.codeSource || codeSource;
     if (!session.configured) showAuth('setup');
     else if (!session.authenticated) showAuth('login');
     else await enter();

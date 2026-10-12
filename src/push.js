@@ -51,12 +51,14 @@ function generateKeys() {
   return { publicKey: b64(Buffer.concat([Buffer.from([4]), unb64(jwk.x), unb64(jwk.y)])), privateKey: jwk.d };
 }
 
-function privateKeyObject(keys) {
+/** La clé privée du serveur, sous la forme qu'acceptent pour signer Node.js comme Cloudflare. */
+function signingKey(keys) {
   const point = unb64(keys.publicKey);
-  return crypto.createPrivateKey({
-    format: 'jwk',
+  return {
     key: { kty: 'EC', crv: 'P-256', x: b64(point.subarray(1, 33)), y: b64(point.subarray(33)), d: keys.privateKey },
-  });
+    format: 'jwk',
+    dsaEncoding: 'ieee-p1363',
+  };
 }
 
 /** En-tête « Authorization » : un jeton signé, valable douze heures pour ce service de notification. */
@@ -67,7 +69,7 @@ function vapidHeader(endpoint, keys, subject = '', now = Date.now()) {
     exp: Math.floor(now / 1000) + 12 * 3600,
     ...(subject && { sub: subject }),
   }));
-  const signature = crypto.sign('sha256', Buffer.from(`${header}.${claims}`), { key: privateKeyObject(keys), dsaEncoding: 'ieee-p1363' });
+  const signature = crypto.sign('sha256', Buffer.from(`${header}.${claims}`), signingKey(keys));
   return `vapid t=${header}.${claims}.${b64(signature)}, k=${keys.publicKey}`;
 }
 

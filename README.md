@@ -60,6 +60,8 @@ En ligne de commande : `node server.js` (ou `npm run open` pour ouvrir aussi le 
 
 Mot de passe oublié : arrêtez le serveur, lancez `npm run reset-password`, puis redémarrez. Un nouveau code s'affiche. Les rendez-vous ne sont pas touchés.
 
+Site en ligne sur Cloudflare : le code n'est pas affiché, c'est vous qui le choisissez (voir « Mettre le site en ligne sur Cloudflare », étape 3).
+
 ## Mettre les vraies informations
 
 Tout se règle dans **`salon.config.js`** (les valeurs marquées `PROVISOIRE` sont des exemples) :
@@ -99,15 +101,15 @@ Les photos du salon sont dans `public/photos/` ; leur chemin, leur description (
 ## Sécurité de l'espace salon
 
 - Mot de passe haché (scrypt, sel aléatoire) ; il n'est jamais enregistré en clair.
-- Première configuration protégée par un code à usage unique affiché côté serveur : personne d'autre ne peut s'approprier l'espace.
-- Session par cookie `HttpOnly` et `SameSite=Strict` (et `Secure` en HTTPS), valable 7 jours.
+- Première configuration protégée par un code à usage unique affiché côté serveur (en ligne sur Cloudflare : un secret choisi dans les réglages) : personne d'autre ne peut s'approprier l'espace.
+- Session par cookie `HttpOnly` et `SameSite=Strict` (et `Secure` en HTTPS), valable 7 jours, même si le site redémarre. Le serveur n'en garde qu'une empreinte.
 - Blocage 15 minutes après 5 mots de passe erronés.
 - Chaque action qui modifie quelque chose doit venir du site lui-même (protection CSRF).
 - Les pages publiques ne reçoivent jamais les noms ni les téléphones : le direct annonce seulement « tel jour a changé ».
 - En-têtes de sécurité stricts : aucun script ni style en ligne, aucun script tiers.
 - Réservations : champ piège anti-robots, limite par adresse IP, par numéro de téléphone et pour le site entier (quarante demandes par heure).
 - Aucune clé secrète dans les pages : tout se décide sur le serveur. Seule la clé publique des notifications est envoyée au navigateur.
-- En ligne, tout est renvoyé vers HTTPS et vers une seule adresse (voir « Mettre le site en ligne »).
+- En ligne, tout est renvoyé vers HTTPS et vers une seule adresse (voir « Mettre le site en ligne sur Cloudflare »).
 
 ## Les rappels par notification
 
@@ -125,7 +127,7 @@ Quand un client appuie sur « Me le rappeler », son navigateur s'abonne aux not
 | --- | --- |
 | Page RGPD, page CGU | `/confidentialite`, `/conditions` (textes à faire relire par Cyrille) |
 | Rien de secret dans les pages | Tout passe par le serveur ; testé (`test/site.test.js`) |
-| HTTPS forcé | Redirection et en-tête HSTS dès que `TRUST_PROXY=1` |
+| HTTPS forcé | Redirection et en-tête HSTS dès que `TRUST_PROXY=1`, et toujours sur Cloudflare |
 | Bannière cookies | Avis en bas de l'écran, choix gardé six mois, modifiable depuis le pied de page |
 | Titres et descriptions | Un titre et une description propres à chaque page, avec le métier et la ville |
 | Image pour les réseaux | `public/img/partage.jpg` (1200 × 630) |
@@ -145,7 +147,9 @@ Quand un client appuie sur « Me le rappeler », son navigateur s'abonne aux not
 
 ## Données
 
-Les données sont dans `data/` (créé au premier lancement) : `rendez-vous.json`, `fermetures.json`, `compte.json`, `rappels.json` (abonnements aux notifications et clés du serveur) et `frequentation.json` (compteurs de visites, anonymes). Ce dossier contient des coordonnées de clients : sauvegardez-le, ne le publiez jamais (il est déjà exclu par `.gitignore`). Les rendez-vous de plus d'un an sont effacés automatiquement.
+Les données sont dans `data/` (créé au premier lancement) : `rendez-vous.json`, `fermetures.json`, `compte.json`, `sessions.json` (appareils connectés à l'espace salon), `rappels.json` (abonnements aux notifications et clés du serveur) et `frequentation.json` (compteurs de visites, anonymes). Ce dossier contient des coordonnées de clients : sauvegardez-le, ne le publiez jamais (il est déjà exclu par `.gitignore`). Les rendez-vous de plus d'un an sont effacés automatiquement.
+
+En ligne sur Cloudflare, les mêmes données sont rangées dans la base du site chez Cloudflare (une ligne par fichier ci-dessus, voir `cloudflare/storage.js`), et non dans le dépôt : un site en ligne et l'ordinateur du salon ont chacun leurs propres rendez-vous.
 
 ## Tests
 
@@ -153,13 +157,47 @@ Les données sont dans `data/` (créé au premier lancement) : `rendez-vous.json
 npm test
 ```
 
-55 tests couvrent le calcul des créneaux, les réservations, l'authentification, la sécurité HTTP, le lancement, les rappels (chiffrement vérifié sur l'exemple de la norme) et la liste de contrôle (référencement, liens, images, HTTPS, fichiers privés, fréquentation).
+60 tests couvrent le calcul des créneaux, les réservations, l'authentification, la sécurité HTTP, le lancement, les rappels (chiffrement vérifié sur l'exemple de la norme), la liste de contrôle (référencement, liens, images, HTTPS, fichiers privés, fréquentation) et le fonctionnement sur Cloudflare (pages, réservation et direct à travers l'adaptateur, code de configuration, base de données).
 
-## Mettre le site en ligne
+## Mettre le site en ligne sur Cloudflare
 
-Il faut un hébergement qui exécute Node.js en continu (un simple hébergement de pages ne suffit pas) et un nom de domaine.
+Cloudflare fait tourner le site sur ses serveurs, jour et nuit, sans ordinateur allumé au salon : réservation, direct, espace de la coiffeuse, rappels par notification et fréquentation fonctionnent comme sur l'ordinateur, en HTTPS. L'offre gratuite de Cloudflare suffit largement pour un salon (100 000 requêtes par jour, soit plusieurs milliers de visites) : seul le nom de domaine se paie.
 
-1. Dans `salon.config.js`, renseigner `siteUrl` (par exemple `https://www.latelier-de-cyrille.fr`) et compléter les mentions légales (forme juridique, SIRET, hébergeur).
+Comment c'est fait : `cloudflare/worker.js` reçoit les visites et sert lui-même les styles, scripts et photos ; tout le reste est confié au « salon », une instance unique créée en Europe de l'Ouest (un *Durable Object*), qui fait tourner le même code que le serveur de l'ordinateur et range les données dans sa propre base. Il s'endort quand personne ne visite le site et se réveille tout seul pour envoyer les rappels et faire l'entretien. `wrangler.jsonc` décrit tout cela à Cloudflare ; avant chaque publication, `cloudflare/build.js` vérifie `salon.config.js` (une erreur arrête la publication, comme le serveur refuse de démarrer).
+
+### 1. Le nom de domaine
+
+Cloudflare vend les noms de domaine à prix coûtant, mais **pas les « .fr »** :
+
+- **un .fr**, le plus parlant pour un salon de Loison-sous-Lens (`latelier-de-cyrille.fr`) : l'acheter chez un bureau d'enregistrement français (OVH, Gandi, IONOS…, environ 7 à 15 € par an), puis le confier à Cloudflare à l'étape 4 ;
+- **un .com** (`latelier-de-cyrille.com`) : l'acheter directement dans Cloudflare (« Domain Registration »), environ 10 € par an. Il est alors déjà prêt pour l'étape 4.
+
+### 2. Publier le site
+
+1. Créer un compte gratuit sur [dash.cloudflare.com](https://dash.cloudflare.com).
+2. **Workers & Pages** → **Create** → **Import a repository** : relier le compte GitHub et choisir ce dépôt. Garder les réglages proposés : nom `latelier-de-cyrille` (le même que dans `wrangler.jsonc`), commande de publication `npx wrangler deploy`.
+3. Cloudflare publie le site, puis le republie tout seul à chaque modification envoyée sur la branche principale (`main`). Il répond tout de suite à une adresse du type `https://latelier-de-cyrille.<compte>.workers.dev`.
+
+### 3. Le code de la première connexion
+
+Dans le Worker : **Settings** → **Variables and Secrets** → **Add** : type **Secret**, nom `SETUP_CODE`, valeur : un code inventé pour l'occasion, d'au moins 8 lettres ou chiffres (trois mots et un nombre, par exemple). Enregistrer (« Deploy »), puis ouvrir `/salon` : saisir ce code et choisir le mot de passe de la coiffeuse. Le code ne sert qu'une fois.
+
+**Mot de passe oublié** : remplacer la valeur du secret `SETUP_CODE` par un nouveau code. L'espace salon redemande alors le code, puis un nouveau mot de passe ; les appareils connectés sont déconnectés, les rendez-vous ne sont pas touchés.
+
+### 4. Brancher le nom de domaine
+
+1. Un .fr acheté ailleurs : dans Cloudflare, **Add a domain**, offre **Free**. Cloudflare donne deux « serveurs de noms » (`…ns.cloudflare.com`) : chez le bureau d'enregistrement, remplacer les serveurs DNS du domaine par ces deux-là. Le domaine est actif après quelques heures (Cloudflare envoie un e-mail).
+2. Dans `wrangler.jsonc`, retirer les `//` devant le bloc `routes` et y mettre le vrai nom, avec et sans `www.`.
+3. Dans `salon.config.js`, renseigner `siteUrl` (par exemple `https://www.latelier-de-cyrille.fr`) et compléter les mentions légales (forme juridique, SIRET ; l'hébergeur, Cloudflare, est déjà indiqué).
+4. Envoyer ces modifications sur `main` : Cloudflare republie le site sur le nom de domaine, avec son certificat HTTPS. Toute visite en `http://` ou sans `www.` est renvoyée vers `siteUrl`.
+
+Le site tourne aussi sur Cloudflare sans être publié, pour essayer une modification : `npx wrangler dev`, puis http://localhost:8787 (le code de configuration se met alors dans un fichier `.dev.vars` : `SETUP_CODE=…`).
+
+### Sur un serveur à soi
+
+Autre possibilité : un hébergement qui exécute Node.js en continu (un simple hébergement de pages ne suffit pas).
+
+1. Dans `salon.config.js`, renseigner `siteUrl` et compléter les mentions légales, hébergeur compris.
 2. Sur le serveur, placer devant le site un serveur frontal qui s'occupe du certificat HTTPS. Avec [Caddy](https://caddyserver.com), deux lignes suffisent, le certificat est demandé et renouvelé tout seul :
 
    ```
@@ -194,4 +232,5 @@ Non inclus pour l'instant : e-mails ou SMS de confirmation, paiement en ligne, p
 | `public/css/` | Styles : `base.css` (papier, typographie, languettes, animations), `pages.css` (les pages du journal), `booking.css`, `salon.css` |
 | `public/js/` | `site.js` (animations du site, avis sur les cookies), `booking.js` (réservation, rappel), `salon.js` (espace salon) |
 | `public/sw.js` | Reçoit et affiche les notifications de rappel |
+| `cloudflare/`, `wrangler.jsonc` | Le site en ligne sur Cloudflare : point d'entrée (`worker.js`), passage de Cloudflare au serveur (`adapter.js`), base de données (`storage.js`), préparation (`build.js`) |
 | `test/` | Tests automatiques |

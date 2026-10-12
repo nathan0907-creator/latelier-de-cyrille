@@ -162,6 +162,7 @@ module.exports = {
     status: '[forme juridique à compléter]',
     siret: '[SIRET à compléter]',
     publisher: 'Cyrille [nom à compléter]',
-    host: "[nom et adresse de l'hébergeur à compléter]",
+    // Cloudflare (voir « Mettre le site en ligne sur Cloudflare » dans le README).
+    host: 'Cloudflare, Inc., 101 Townsend St, San Francisco, CA 94107, États-Unis · +1 650 319 8930 · cloudflare.com',
   },
 };

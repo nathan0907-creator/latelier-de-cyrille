@@ -48,6 +48,13 @@ function createVersion(publicDir) {
   };
 }
 
+/**
+ * Durée de garde par le navigateur. Adresse versionnée (« ?v=… ») : un an. Sinon, styles et
+ * scripts sont toujours revalidés (mise à jour immédiate) et les images restent un jour en cache.
+ */
+const cacheControl = (type, versioned) => (versioned ? 'public, max-age=31536000, immutable'
+  : /^(text|font)\//.test(type) ? 'no-cache' : 'public, max-age=86400');
+
 /** Sert les fichiers de public/ : types connus uniquement, jamais hors du dossier, avec ETag et compression. */
 function createStatic(publicDir) {
   const root = path.resolve(publicDir);
@@ -77,15 +84,7 @@ function createStatic(publicDir) {
     if (!stat.isFile()) return false;
 
     const etag = `W/"${stat.size.toString(16)}-${Math.round(stat.mtimeMs).toString(16)}"`;
-    const headers = {
-      'Content-Type': type,
-      ETag: etag,
-      // Adresse versionnée (« ?v=… ») : gardée un an. Sinon, styles et scripts sont toujours
-      // revalidés (mise à jour immédiate) et les images restent un jour en cache.
-      'Cache-Control': versioned ? 'public, max-age=31536000, immutable'
-        : /^(text|font)\//.test(type) ? 'no-cache' : 'public, max-age=86400',
-      Vary: 'Accept-Encoding',
-    };
+    const headers = { 'Content-Type': type, ETag: etag, 'Cache-Control': cacheControl(type, versioned), Vary: 'Accept-Encoding' };
     if (req.headers['if-none-match'] === etag) {
       res.writeHead(304, headers);
       res.end();
@@ -107,4 +106,4 @@ function createStatic(publicDir) {
   };
 }
 
-module.exports = { createStatic, createVersion };
+module.exports = { createStatic, createVersion, cacheControl, TYPES };

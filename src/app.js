@@ -12,19 +12,26 @@ const { createStats } = require('./stats');
 const { HttpError, clientIp, isSecure, sameOrigin, readJson, applySecurityHeaders, send, sendJson, sendHtml } = require('./http');
 const views = require('./views');
 
-const fs = require('node:fs');
-const path = require('node:path');
-
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-function createApp({ config, store, clock = () => nowInZone(config.timezone) }) {
+/**
+ * Le site. Sur l'ordinateur du salon, tout est sur place. En ligne sur Cloudflare (voir
+ * cloudflare/worker.js), quelques pièces changent :
+ *   setupCode   : le code de première connexion, choisi dans les réglages (sinon tiré au sort) ;
+ *   timers      : false, le site ne garde aucun minuteur et se fait réveiller (maintain, rappels) ;
+ *   assetVersion: l'empreinte des styles et des scripts, calculée à la publication ;
+ *   serveStatic : les fichiers de public/, servis par Cloudflare avant d'arriver ici ;
+ *   live        : les réglages du direct (src/events.js).
+ */
+function createApp({
+  config, store, clock = () => nowInZone(config.timezone),
+  setupCode, timers = true, assetVersion = createVersion(config.publicDir), serveStatic = createStatic(config.publicDir), live = {},
+}) {
   const bookings = createBookings({ config, store, clock });
   const reminders = createReminders({ config, store, clock });
-  const auth = createAuth({ store });
-  const events = createEvents();
-  const serveStatic = createStatic(config.publicDir);
-  const assetVersion = createVersion(config.publicDir);
-  const stats = createStats({ store, clock });
+  const auth = createAuth({ store, setupCode });
+  const events = createEvents(live);
+  const stats = createStats({ store, clock, saveEveryMs: timers ? 30_000 : 0 });
 
   const limits = {
     api: createLimiter({ max: 300, windowMs: 60_000 }),
@@ -158,7 +165,9 @@ function createApp({ config, store, clock = () => nowInZone(config.timezone) }) 
     // — Accès à l'espace salon —
 
     if (route === 'GET /api/salon/session') {
-      return json(200, { configured: auth.isConfigured(), authenticated: Boolean(auth.readSession(req)) });
+      const configured = auth.isConfigured();
+      // Pas encore configuré : où trouver le code de configuration (fenêtre du serveur ou Cloudflare).
+      return json(200, { configured, authenticated: Boolean(auth.readSession(req)), ...(!configured && { codeSource: auth.codeSource }) });
     }
 
     if (route === 'POST /api/salon/setup' || route === 'POST /api/salon/login') {
@@ -309,13 +318,7 @@ function createApp({ config, store, clock = () => nowInZone(config.timezone) }) 
   }
 
   // Date de la dernière mise à jour du contenu : celle du fichier de configuration du salon.
-  const lastModified = (() => {
-    try {
-      return fs.statSync(path.join(__dirname, '..', 'salon.config.js')).mtime.toISOString().slice(0, 10);
-    } catch {
-      return clock().date;
-    }
-  })();
+  const lastModified = config.updated || clock().date;
 
   function sitemap(origin) {
     const urls = views.publicPaths.map(p => `  <url><loc>${origin}${p === '/' ? '/' : p}</loc><lastmod>${lastModified}</lastmod></url>`).join('\n');
@@ -403,19 +406,21 @@ function createApp({ config, store, clock = () => nowInZone(config.timezone) }) 
 
   // ── Entretien ──────────────────────────────────────────────────────────
 
-  bookings.purgeOld();
-  const housekeeping = setInterval(() => {
+  /** Efface les vieux rendez-vous, les sessions expirées et les compteurs des limiteurs. */
+  function maintain() {
     bookings.purgeOld();
     auth.sweep();
     Object.values(limits).forEach(limiter => limiter.sweep());
-  }, 60 * 60_000);
-  housekeeping.unref();
+  }
 
-  // Chaque minute : les rappels arrivés à échéance partent.
-  const reminding = setInterval(() => {
+  bookings.purgeOld();
+  // Toutes les heures : l'entretien. Chaque minute : les rappels arrivés à échéance partent.
+  const housekeeping = timers ? setInterval(maintain, 60 * 60_000) : null;
+  const reminding = timers ? setInterval(() => {
     reminders.tick().catch(err => console.error('[rappels]', err));
-  }, 60_000);
-  reminding.unref();
+  }, 60_000) : null;
+  housekeeping?.unref();
+  reminding?.unref();
 
   function close() {
     stats.close();
@@ -424,7 +429,7 @@ function createApp({ config, store, clock = () => nowInZone(config.timezone) }) 
     events.close();
   }
 
-  return { handle, close, auth, events, reminders, stats };
+  return { handle, close, maintain, auth, events, reminders, stats };
 }
 
 module.exports = { createApp };

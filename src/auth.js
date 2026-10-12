@@ -65,21 +65,36 @@ function parseCookies(header) {
 
 const failure = (status, error) => ({ ok: false, status, error });
 
+/** Longueur minimale du code de configuration choisi en ligne (secret SETUP_CODE de Cloudflare). */
+const MIN_SECRET_CODE = 8;
+
 /**
  * Accès à l'espace salon.
- * - Première utilisation : un code à usage unique, affiché dans la console du serveur,
- *   autorise la création du mot de passe (personne d'autre ne peut s'approprier l'espace).
+ * - Première utilisation : un code à usage unique autorise la création du mot de passe (personne
+ *   d'autre ne peut s'approprier l'espace). Sur l'ordinateur du salon, le serveur le tire au sort
+ *   et l'affiche dans sa fenêtre. En ligne sur Cloudflare, c'est le secret SETUP_CODE (setupCode) ;
+ *   le remplacer par un nouveau code permet de choisir un nouveau mot de passe (mot de passe oublié).
  * - Le mot de passe est haché avec scrypt ; seul le hachage est enregistré.
- * - Les sessions vivent en mémoire, identifiées par le SHA-256 d'un jeton aléatoire.
+ * - Les sessions sont enregistrées sous le SHA-256 d'un jeton aléatoire : le jeton lui-même ne
+ *   se trouve que dans le cookie du navigateur.
  */
-function createAuth({ store, now = Date.now }) {
-  const sessions = new Map();
+function createAuth({ store, now = Date.now, setupCode: secret }) {
+  // Sans secret (ordinateur du salon), le code est tiré au sort. Un secret trop court ne sert pas.
+  const fixedCode = secret === undefined ? null : normalizeCode(secret);
+  const usableCode = fixedCode && fixedCode.length >= MIN_SECRET_CODE ? fixedCode : '';
+  const codeKey = usableCode ? sha256(`code:${usableCode}`).toString('hex') : '';
   let setupCode = null;
+  let settingUp = false;
 
-  const isConfigured = () => Boolean(store.admin.get());
+  /** Configuré : un mot de passe existe, et le secret n'a pas été remplacé depuis qu'il a été choisi. */
+  function isConfigured() {
+    const admin = store.admin.get();
+    return Boolean(admin) && (!codeKey || admin.codeKey === codeKey);
+  }
 
   function currentSetupCode() {
     if (isConfigured()) return null;
+    if (fixedCode !== null) return usableCode || null;
     if (!setupCode) setupCode = generateSetupCode();
     return setupCode;
   }
@@ -87,16 +102,22 @@ function createAuth({ store, now = Date.now }) {
   async function setup(code, password) {
     if (isConfigured()) return failure(409, "L'espace salon est déjà configuré.");
     const expected = currentSetupCode();
+    if (!expected) {
+      return failure(503, `Ajoutez d'abord le secret SETUP_CODE (${MIN_SECRET_CODE} lettres ou chiffres au moins) dans les réglages du site sur Cloudflare.`);
+    }
     if (!safeEqual(normalizeCode(code), normalizeCode(expected))) return failure(403, 'Code de configuration incorrect.');
     const problem = passwordProblem(password);
     if (problem) return failure(400, problem);
-    setupCode = null; // usage unique : une seconde demande simultanée échoue
+    if (settingUp) return failure(409, "L'espace salon est en cours de configuration."); // usage unique
+    settingUp = true;
     try {
-      store.admin.set({ ...(await hashPassword(password)), createdAt: new Date().toISOString() });
-    } catch (err) {
-      setupCode = expected;
-      throw err;
+      store.admin.set({ ...(await hashPassword(password)), ...(codeKey && { codeKey }), createdAt: new Date().toISOString() });
+    } finally {
+      settingUp = false;
     }
+    setupCode = null;
+    // Nouveau mot de passe : les sessions ouvertes avec l'ancien (mot de passe oublié) ne valent plus rien.
+    store.sessions.removeWhere(() => true);
     return { ok: true };
   }
 
@@ -111,14 +132,17 @@ function createAuth({ store, now = Date.now }) {
     if (!(await verifyPassword(current, store.admin.get()))) return failure(403, 'Mot de passe actuel incorrect.');
     const problem = passwordProblem(next);
     if (problem) return failure(400, problem);
-    store.admin.set({ ...(await hashPassword(next)), createdAt: store.admin.get().createdAt, changedAt: new Date().toISOString() });
+    const { createdAt, codeKey: key } = store.admin.get();
+    store.admin.set({ ...(await hashPassword(next)), ...(key && { codeKey: key }), createdAt, changedAt: new Date().toISOString() });
     return { ok: true };
   }
+
+  const forget = id => store.sessions.removeWhere(key => key === id) > 0;
 
   function createSession() {
     const token = crypto.randomBytes(32).toString('base64url');
     const id = sha256(token).toString('hex');
-    sessions.set(id, { expires: now() + SESSION_TTL_MS });
+    store.sessions.set(id, { expires: now() + SESSION_TTL_MS });
     return { token, id };
   }
 
@@ -126,10 +150,10 @@ function createAuth({ store, now = Date.now }) {
     const token = parseCookies(req.headers.cookie)[COOKIE_NAME];
     if (!token || token.length > 128) return null;
     const id = sha256(token).toString('hex');
-    const session = sessions.get(id);
+    const session = store.sessions.get(id);
     if (!session) return null;
     if (session.expires <= now()) {
-      sessions.delete(id);
+      forget(id);
       return null;
     }
     return { id };
@@ -145,21 +169,23 @@ function createAuth({ store, now = Date.now }) {
   return {
     isConfigured,
     setupCode: currentSetupCode,
+    /** Où trouver le code de configuration : dans la fenêtre du serveur, ou dans les réglages de Cloudflare. */
+    codeSource: fixedCode === null ? 'console' : 'secret',
     setup,
     login,
     changePassword,
     createSession,
     readSession,
-    destroySession: id => sessions.delete(id),
+    destroySession: forget,
     destroyOtherSessions(keepId) {
-      for (const id of [...sessions.keys()]) if (id !== keepId) sessions.delete(id);
+      store.sessions.removeWhere(id => id !== keepId);
     },
-    hasSession: id => sessions.has(id),
+    hasSession: id => Boolean(store.sessions.get(id)),
     sessionCookie: (token, secure) => cookie(token, secure),
     clearedCookie: secure => cookie('', secure),
     sweep() {
       const t = now();
-      for (const [id, session] of sessions) if (session.expires <= t) sessions.delete(id);
+      store.sessions.removeWhere((id, session) => session.expires <= t);
     },
   };
 }

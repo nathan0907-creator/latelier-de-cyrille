@@ -118,6 +118,24 @@ function setup() {
   return { config, store, reminders, bookings, book, now, sent, answer: next => { reply = next; } };
 }
 
+test('rappels : le site en ligne sait quand se réveiller pour le prochain', async () => {
+  const salon = setup();
+  assert.equal(salon.reminders.nextDue(), null, 'aucun rappel demandé');
+  const booking = salon.book(); // mardi 14h30
+  salon.reminders.subscribe(salon.reminders.refFor(booking).ref, browser().subscription);
+  assert.equal(salon.reminders.nextDue(), 270, 'lundi 10h : la veille part dans 4 h 30');
+
+  salon.now.minutes = 14 * 60 + 30;
+  assert.equal(salon.reminders.nextDue(), 0);
+  await salon.reminders.tick();
+  assert.equal(salon.reminders.nextDue(), 22 * 60, 'puis 2 h avant, mardi 12h30');
+
+  Object.assign(salon.now, { date: TUESDAY, minutes: 12 * 60 + 30 });
+  salon.answer({ ok: false, status: 503, gone: false });
+  await salon.reminders.tick();
+  assert.equal(salon.reminders.nextDue(), 0, 'envoi manqué : on réessaie tout de suite');
+});
+
 test('rappels : la veille et 2 h avant, une seule fois chacun', async () => {
   const salon = setup();
   const booking = salon.book(); // mardi 14h30, réservé le lundi à 10h
