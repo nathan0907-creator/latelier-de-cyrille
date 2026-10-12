@@ -6,7 +6,7 @@ Aucune dépendance à installer : il suffit de Node.js 22 ou plus récent.
 
 ## Démonstration en ligne
 
-L'adresse de démonstration sur GitHub Pages (https://nathan0907-creator.github.io/latelier-de-cyrille/) renvoie maintenant au vrai site, la version complète : chaque page de l'ancienne démonstration mène à la même page du site en ligne. L'adresse du vrai site est donnée par `--live` dans `.github/workflows/demo.yml` : à remplacer par le nom de domaine quand il sera branché.
+L'adresse de démonstration sur GitHub Pages (https://nathan0907-creator.github.io/latelier-de-cyrille/) renvoie maintenant au vrai site, la version complète : chaque page de l'ancienne démonstration mène à la même page du site en ligne. L'adresse du vrai site est celle de `siteUrl`, dans `salon.config.js`.
 
 Sans adresse de vrai site, `scripts/export-demo.js` fabrique comme avant une copie « pour de faux » : toutes les pages, une réservation calculée dans le navigateur avec les vraies règles (horaires, durées, jours fériés), rien d'enregistré, pas d'espace salon.
 
@@ -177,6 +177,8 @@ npm test
 76 tests couvrent le calcul des créneaux, les réservations, l'authentification, la sécurité HTTP, le lancement, les rappels (chiffrement vérifié sur l'exemple de la norme), la liste de contrôle (référencement, liens, images, HTTPS, fichiers privés, fréquentation) les jours fériés, les pages par prestation, les réglages de l'espace salon (tarifs, horaires, photos, déplacement d'un rendez-vous) et le fonctionnement sur Cloudflare (pages, réservation et direct à travers l'adaptateur, code de configuration, base de données, réglages et photos).
 
 ## Mettre le site en ligne sur Cloudflare
+
+**C'est fait** : le site est en ligne sur https://latelierdecyrille.com, nom de domaine acheté chez Cloudflare et branché sur le site depuis le tableau de bord (`siteUrl` le déclare dans `salon.config.js`). L'adresse `www.latelierdecyrille.com`, elle, ne répond pas tant qu'elle n'a pas été ajoutée au même endroit (Worker → **Settings** → **Domains & Routes** → **Add** → **Custom domain**) ; une fois ajoutée, le site la renvoie tout seul vers l'adresse sans `www.`. Ce qui suit reste le mode d'emploi pour refaire l'installation.
 
 Cloudflare fait tourner le site sur ses serveurs, jour et nuit, sans ordinateur allumé au salon : réservation, direct, espace de la coiffeuse, rappels par notification et fréquentation fonctionnent comme sur l'ordinateur, en HTTPS. L'offre gratuite de Cloudflare suffit largement pour un salon (100 000 requêtes par jour, soit plusieurs milliers de visites) : seul le nom de domaine se paie.
 

@@ -20,9 +20,9 @@ module.exports = {
   // sur une seule ; sur téléphone, elles s'empilent. La taille s'ajuste toute seule.
   headline: ['Cyrille,', 'votre coiffeuse', '(presque)', '*magicienne*'],
 
-  // Adresse publique du site une fois en ligne (ex. 'https://www.latelier-de-cyrille.fr').
-  // Laissez vide tant que le site n'a pas de nom de domaine.
-  siteUrl: '',
+  // Adresse publique du site : le nom de domaine du salon. Les moteurs de recherche ne connaissent
+  // que celle-ci, et toute autre adresse du site en ligne y renvoie.
+  siteUrl: 'https://latelierdecyrille.com',
 
   // Référencement (Google, Bing…).
   seo: {
@@ -43,7 +43,7 @@ module.exports = {
     instagram: '',
     // La fiche Google du salon : dans Google Maps, ouvrir la fiche, « Partager », « Copier le lien ».
     // Le site y renvoie (avis, itinéraire) et la signale aux moteurs de recherche.
-    google: '',
+    google: 'https://share.google/Cp8sXzSEfxHrPcLaf',
   },
 
   // Adresse (sert aussi à Google Maps)
@@ -52,7 +52,7 @@ module.exports = {
     postalCode: '62218',
     city: 'Loison-sous-Lens',
     // Optionnel : texte exact à chercher dans Google Maps (nom de la fiche Google, par exemple).
-    mapsQuery: '',
+    mapsQuery: "L'atelier de Cyrille - le salon, 9 Route de Lille, 62218 Loison-sous-Lens",
     // Optionnel : indications pour venir, une par ligne (stationnement, bus…).
     access: [],
   },
@@ -162,7 +162,7 @@ module.exports = {
   // PROVISOIRE — mentions légales
   legal: {
     company: "L'atelier de Cyrille",
-    status: '[forme juridique à compléter]',
+    status: 'entrepreneur individuel',
     siret: '844 660 209 00033',
     publisher: 'Cyrille [nom à compléter]',
     // Cloudflare (voir « Mettre le site en ligne sur Cloudflare » dans le README).
