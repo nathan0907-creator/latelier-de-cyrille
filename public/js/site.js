@@ -360,8 +360,14 @@ function initImageFallback() {
   document.addEventListener('error', event => {
     if (event.target instanceof HTMLImageElement) useFallback(event.target);
   }, true);
+  // Images déjà traitées avant ce script. Une largeur nulle ne suffit pas à dire qu'une image est
+  // cassée : dans une fenêtre sans largeur (onglet ouvert en arrière-plan), une photo proposée en
+  // plusieurs largeurs annonce elle aussi zéro. On s'en assure en la rechargeant hors de la page.
   for (const img of document.querySelectorAll('img')) {
-    if (img.complete && img.currentSrc && img.naturalWidth === 0) useFallback(img);
+    if (!(img.complete && img.currentSrc && img.naturalWidth === 0)) continue;
+    const probe = new Image();
+    probe.addEventListener('error', () => useFallback(img));
+    probe.src = img.currentSrc;
   }
 }
 

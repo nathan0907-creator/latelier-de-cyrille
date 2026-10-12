@@ -71,7 +71,9 @@ module.exports = {
   booking: {
     slotStep: 30,          // un créneau toutes les 30 minutes
     minNoticeMinutes: 120, // on ne réserve pas en ligne moins de 2 h à l'avance
-    maxDaysAhead: 60,      // réservation ouverte sur 60 jours
+    // Jusqu'à quand on peut réserver : ce nombre de jours à partir d'aujourd'hui. Le calendrier
+    // avance tout seul chaque jour. 730 = deux ans ; mettez 90 pour trois mois, 365 pour un an.
+    maxDaysAhead: 730,
     maxActivePerPhone: 3,  // rendez-vous à venir autorisés par numéro de téléphone
     retentionDays: 365,    // les rendez-vous passés sont effacés après un an
     // Rappels par notification proposés au client : combien de minutes avant le rendez-vous.
