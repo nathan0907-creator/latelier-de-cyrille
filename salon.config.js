@@ -96,12 +96,12 @@ module.exports = {
   //   priceFrom: true : affiché « dès … ».
   //
   // Les DURÉES (en minutes, multiples de slotStep) décident des créneaux proposés.
-  // Données par Cyrille : coupe brushing, homme, enfant 30 min ; patine 1 h ; couleur 1 h 30 ; balayage 2 h ;
+  // Données par Cyrille : coupe brushing, homme, enfant 30 min ; patine 1 h ; couleur 1 h 30 ; mèches, balayage, micro-balayage 3 h 30 ;
   // ombré patine 2 h ; ombré racine (« Ombré complet » sur la carte) 3 h ; lissage 3 h 30.
-  // ⚠ PROVISOIRE — encore estimées, à lui faire valider : pointes, mèches, micro-balayage, soins.
+  // ⚠ PROVISOIRE — encore estimées, à lui faire valider : pointes, soins.
   //
   // Les TEMPS DE POSE (« pauses ») : « after » minutes après le début, Cyrille est libre « duration »
-  // minutes et peut prendre quelqu'un d'autre. Donnés par elle pour la couleur, le balayage et l'ombré racine.
+  // minutes et peut prendre quelqu'un d'autre. Donnés par elle pour la couleur, les mèches, les balayages et l'ombré racine.
   priceNote: 'Tarifs « à partir de ». Supplément pour les cheveux très longs.',
   services: [
     {
@@ -119,10 +119,10 @@ module.exports = {
         { id: 'patine', name: 'Patine', duration: 60, prices: [35, 45, 50] },
         // 30 min d'application, 30 min de pose, 30 min de coupe et brushing.
         { id: 'coloration', name: 'Coloration', duration: 90, pauses: [{ after: 30, duration: 30 }], prices: [40, 50, 65] },
-        { id: 'meches', name: 'Mèches', duration: 120, prices: [55, 65, 80] },
-        // 30 min d'application, 30 min de pose, puis 1 h : patine, coupe, brushing.
-        { id: 'balayage', name: 'Balayage', duration: 120, pauses: [{ after: 30, duration: 30 }], prices: [75, 85, 100] },
-        { id: 'micro-balayage', name: 'Micro-balayage', duration: 180, prices: [85, 105, 125] },
+        // Mèches, balayage, micro-balayage : 30 min d'application, 1 h de pose, puis 2 h (3 h 30 en tout).
+        { id: 'meches', name: 'Mèches', duration: 210, pauses: [{ after: 30, duration: 60 }], prices: [55, 65, 80] },
+        { id: 'balayage', name: 'Balayage', duration: 210, pauses: [{ after: 30, duration: 60 }], prices: [75, 85, 100] },
+        { id: 'micro-balayage', name: 'Micro-balayage', duration: 210, pauses: [{ after: 30, duration: 60 }], prices: [85, 105, 125] },
         { id: 'ombre-patine', name: 'Ombré patine', duration: 120, prices: [85, 105, 125] },
         // Ombré racine : application, pose, couleur, pose (30 min chacune), puis 1 h : patine, coupe, brushing.
         { id: 'ombre-complet', name: 'Ombré complet', duration: 180, pauses: [{ after: 30, duration: 30 }, { after: 90, duration: 30 }], prices: [95, 130, 155] },
