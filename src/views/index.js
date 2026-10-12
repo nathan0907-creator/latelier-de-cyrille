@@ -1,7 +1,7 @@
 'use strict';
 
 const { home } = require('./home');
-const { services, service, gallery, find, legal, privacy, terms, notFound } = require('./pages');
+const { services, service, gallery, find, legal, privacy, terms, appointment, notFound } = require('./pages');
 const { booking } = require('./booking');
 const { salon } = require('./salon');
 
@@ -21,4 +21,4 @@ const pages = {
 /** Pages à faire connaître aux moteurs de recherche (plan du site). */
 const publicPaths = ['/', '/prestations', '/galerie', '/nous-trouver', '/reservation'];
 
-module.exports = { pages, publicPaths, service, notFound };
+module.exports = { pages, publicPaths, service, appointment, notFound };

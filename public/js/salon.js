@@ -355,10 +355,20 @@ function connect() {
       drop(booking.id);
       return;
     }
-    const isNew = kind === 'created' && !state.bookings.some(b => b.id === booking.id);
+    const known = state.bookings.find(b => b.id === booking.id);
+    const isNew = kind === 'created' && !known;
+    // Le client vient d'annuler lui-même, depuis sa page « Votre rendez-vous ».
+    const clientCancelled = booking.cancelledBy === 'client' && booking.status === 'cancelled' && known && known.status !== 'cancelled';
     if (isNew) markFresh(booking.id);
     upsert(booking);
     if (isNew && booking.source === 'online') announce(booking);
+    if (clientCancelled) {
+      if (state.alerts) chime();
+      toast(`${booking.name} · ${whenLabel(booking)}`, {
+        title: 'Annulé par le client', detail: 'Le créneau est de nouveau proposé en ligne.', duration: 15_000,
+        action: { label: 'Voir', run: () => openDetail(booking.id) },
+      });
+    }
   });
 
   source.addEventListener('closures', event => {
@@ -1059,6 +1069,7 @@ function renderDetail({ focus = false } = {}) {
   detail.sheet.heading.textContent = booking.name;
   detail.sheet.body.replaceChildren(...[
     h('p', { class: 'sheet-actions' }, statusBadge(booking),
+      booking.status === 'cancelled' && booking.cancelledBy === 'client' ? h('span', { class: 'badge badge--neutral' }, 'Par le client') : null,
       h('span', { class: 'badge badge--neutral' }, booking.source === 'salon' ? 'Saisi au salon' : 'Réservé en ligne')),
     h('dl', { class: 'detail-list' },
       row('Prestation', booking.serviceName),

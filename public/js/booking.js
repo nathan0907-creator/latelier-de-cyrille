@@ -52,6 +52,9 @@ const el = {
   remind: $('[data-remind]'),
   remindLabel: $('[data-remind-label]'),
   remindNote: $('[data-remind-note]'),
+  notifyField: $('[data-notify-field]'),
+  manage: $('[data-manage]'),
+  mine: $('[data-mine]'),
 };
 
 const panel = step => $(`[data-step="${step}"]`);
@@ -417,6 +420,16 @@ el.form.addEventListener('submit', async event => {
 
   const fields = el.form.elements;
   setSubmitting(true);
+  // La case « Me prévenir » est cochée : on demande l'accord du navigateur maintenant, pendant
+  // que le clic sur « Envoyer » est encore tout frais (les navigateurs l'exigent).
+  let notifications = 'non';
+  if (canRemind && fields.notify.checked) {
+    try {
+      notifications = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
+    } catch {
+      notifications = 'denied';
+    }
+  }
   try {
     const { booking, reminder } = await api('/api/bookings', {
       method: 'POST',
@@ -431,6 +444,8 @@ el.form.addEventListener('submit', async event => {
       },
     });
     showConfirmation(booking, reminder);
+    // Accord donné : les notifications s'activent toutes seules, sans bouton à presser.
+    if (notifications === 'granted' && remind.ref) toggleReminder();
   } catch (err) {
     if (err.status === 409) {
       // Quelqu'un a été plus rapide : retour au choix de l'horaire, disponibilités fraîches.
@@ -454,8 +469,45 @@ el.form.addEventListener('submit', async event => {
 
 // ── Confirmation ──────────────────────────────────────────────────────────
 
+/** L'adresse de la page personnelle du rendez-vous (revoir, annuler). */
+const manageUrl = ref => `/rendez-vous?r=${encodeURIComponent(ref)}`;
+const MINE_KEY = 'mes-rendez-vous';
+
+/** Les rendez-vous à venir pris depuis cet appareil (gardés dans le navigateur, pas sur le serveur). */
+function myBookings() {
+  try {
+    return JSON.parse(localStorage.getItem(MINE_KEY) || '[]').filter(item => item && item.ref && item.date >= data.today);
+  } catch {
+    return [];
+  }
+}
+
+function rememberBooking(booking, ref) {
+  try {
+    const list = [...myBookings().filter(item => item.ref !== ref), { ref, date: booking.date, time: booking.time }];
+    localStorage.setItem(MINE_KEY, JSON.stringify(list.sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)).slice(0, 5)));
+  } catch {
+    // Stockage indisponible : le lien de la confirmation suffit.
+  }
+}
+
+/** En haut de la page : « Vous avez rendez-vous mardi 13 octobre à 14h30 », avec le lien pour l'annuler. */
+function showMine() {
+  const [next] = myBookings();
+  el.mine.hidden = !next;
+  if (!next) return;
+  el.mine.querySelector('[data-mine-text]').textContent = `Vous avez rendez-vous ${formatLong(next.date)} à ${frTime(next.time)}.`;
+  el.mine.querySelector('[data-mine-link]').href = manageUrl(next.ref);
+}
+
 function showConfirmation(booking, reminder) {
   state.confirmed = booking;
+  state.manage = reminder?.ref ? manageUrl(reminder.ref) : '';
+  el.manage.hidden = !state.manage;
+  if (state.manage) {
+    el.manage.querySelector('[data-manage-link]').href = state.manage;
+    rememberBooking(booking, reminder.ref);
+  }
   offerReminder(reminder);
   const firstName = booking.name.split(' ')[0];
   el.doneText.textContent = `Merci ${firstName}. À ${formatLong(booking.date)}, ${frTime(booking.time)}.`;
@@ -479,13 +531,16 @@ const canRemind = Boolean(data.push?.key) && 'serviceWorker' in navigator && 'Pu
 const listing = new Intl.ListFormat('fr', { type: 'conjunction' });
 const REMIND_FALLBACK = 'Ajoutez plutôt le rendez-vous à votre agenda.';
 
-/** Le bouton n'apparaît que si l'appareil sait recevoir des notifications et qu'une échéance reste à venir. */
+/** « quand le salon confirme, puis 2 h avant » : ce que les notifications annoncent. */
+const notifyMoments = when => listing.format(['quand le salon confirme', ...when.map(moment => `en rappel ${moment}`)]);
+
+/** Le bouton n'apparaît que si l'appareil sait recevoir des notifications. */
 function offerReminder(reminder) {
-  const offered = canRemind && Boolean(reminder?.ref) && reminder.when.length > 0;
+  const offered = canRemind && Boolean(reminder?.ref);
   remind.ref = offered ? reminder.ref : null;
   el.remind.hidden = !offered;
   el.remindNote.hidden = !offered;
-  if (offered) el.remindNote.textContent = `Une notification sur cet appareil, ${listing.format(reminder.when)}.`;
+  if (offered) el.remindNote.textContent = `Une notification sur cet appareil : ${notifyMoments(reminder.when)}.`;
 }
 
 const fromBase64Url = text => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), char => char.charCodeAt(0));
@@ -512,14 +567,14 @@ async function toggleReminder() {
     if (remind.endpoint) {
       await api('/api/reminders', { method: 'DELETE', body: { ref: remind.ref, endpoint: remind.endpoint } });
       remind.endpoint = null;
-      el.remindNote.textContent = 'Rappel retiré.';
-    } else if (await Notification.requestPermission() !== 'granted') {
+      el.remindNote.textContent = 'Notifications retirées.';
+    } else if (Notification.permission !== 'granted' && await Notification.requestPermission() !== 'granted') {
       el.remindNote.textContent = `Les notifications sont bloquées dans ce navigateur. ${REMIND_FALLBACK}`;
     } else {
       const subscription = await pushSubscription();
       const { when } = await api('/api/reminders', { method: 'POST', body: { ref: remind.ref, subscription: subscription.toJSON() } });
       remind.endpoint = subscription.endpoint;
-      el.remindNote.textContent = `Rappel activé : une notification ${listing.format(when)}.`;
+      el.remindNote.textContent = `Notifications activées sur cet appareil : ${notifyMoments(when)}.`;
     }
   } catch (err) {
     el.remindNote.textContent = err instanceof ApiError && err.status ? err.message : `Le rappel n'a pas pu être activé sur cet appareil. ${REMIND_FALLBACK}`;
@@ -527,7 +582,7 @@ async function toggleReminder() {
     remind.busy = false;
     el.remind.disabled = false;
     el.remind.setAttribute('aria-pressed', String(Boolean(remind.endpoint)));
-    el.remindLabel.textContent = remind.endpoint ? 'Rappel activé' : 'Me le rappeler';
+    el.remindLabel.textContent = remind.endpoint ? 'Notifications activées' : 'Me prévenir';
   }
 }
 
@@ -549,7 +604,8 @@ function downloadCalendar() {
     `DTEND:${stamp(booking.end)}`,
     `SUMMARY:${text(`${booking.serviceName} · ${data.salon.name}`)}`,
     `LOCATION:${text(data.salon.address)}`,
-    `DESCRIPTION:${text(`Tarif : ${priceText(booking)}. Un empêchement ? ${data.salon.phone}`)}`,
+    `DESCRIPTION:${text(`Tarif : ${priceText(booking)}. Un empêchement ? ${data.salon.phone}${state.manage ? ` · Revoir ou annuler : ${location.origin}${state.manage}` : ''}`)}`,
+    ...(state.manage ? [`URL:${location.origin}${state.manage}`] : []),
     // L'agenda sonne aux mêmes échéances que les notifications du site.
     ...(data.reminders || []).flatMap(minutes => [
       'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${text(`${booking.serviceName} · ${data.salon.name}`)}`, `TRIGGER:-PT${minutes}M`, 'END:VALARM',
@@ -625,10 +681,14 @@ root.addEventListener('click', event => {
 //   /reservation?date=2026-10-13       depuis une languette de l'affichette de la une.
 const params = new URLSearchParams(location.search);
 const presetDate = params.get('date') || '';
-if (/^\d{4}-\d{2}-\d{2}$/.test(presetDate) && presetDate >= data.today && presetDate <= data.lastDate) {
+if (/^\d{4}-\d{2}-\d{2}$/.test(presetDate) && presetDate >= (data.firstDate || data.today) && presetDate <= data.lastDate) {
   state.date = presetDate;
   state.month = presetDate.slice(0, 7);
 }
+
+// La case « Me prévenir » n'a de sens que sur un appareil qui sait recevoir des notifications.
+el.notifyField.hidden = !canRemind;
+showMine();
 
 renderStepper();
 renderCalendar();

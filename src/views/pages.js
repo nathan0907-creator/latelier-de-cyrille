@@ -8,6 +8,8 @@ const {
   priceTable, telHref, ratioClass, fullSize, houseRules, euros, priceLabel, durationLabel,
 } = require('./components');
 
+const { formatLong, frTime, toMinutes } = require('../time');
+
 const pageOf = path => PAGES.find(page => page.path === path);
 
 /** Haut de page intérieure : titre courant, surtitre, grand titre, chapeau. */
@@ -330,8 +332,10 @@ function privacy(site) {
       <h2>Ce qui est enregistré, et pourquoi</h2>
       <h3>Quand vous réservez</h3>
       <p>Votre nom, votre numéro de téléphone, la prestation, la date et l'heure du rendez-vous, et le message que vous choisissez d'ajouter. Ces informations servent uniquement à organiser le rendez-vous que vous demandez et à vous prévenir en cas d'imprévu (mesures prises à votre demande avant la prestation, article 6.1.b du RGPD).</p>
-      ${leads ? html`<h3>Si vous demandez un rappel</h3>
-      <p>Le rappel par notification est facultatif. Si vous l'activez, votre navigateur fournit au site une adresse technique qui permet de vous envoyer la notification (${leads}). Elle ne dit rien de vous, ne sert qu'à ce rappel et est effacée après le rendez-vous. Vous retirez votre accord quand vous voulez&nbsp;: en appuyant de nouveau sur le bouton, ou dans les réglages de notifications de votre navigateur.</p>` : ''}
+      ${leads ? html`<h3>Si vous acceptez les notifications</h3>
+      <p>Les notifications sont facultatives : une case, que vous pouvez décocher, les propose au moment de réserver. Si vous les acceptez, votre navigateur fournit au site une adresse technique qui permet de vous prévenir sur cet appareil : quand le salon confirme, déplace ou annule votre rendez-vous, puis en rappel (${leads}). Elle ne dit rien de vous, ne sert qu'à cela et est effacée après le rendez-vous. Vous retirez votre accord quand vous voulez&nbsp;: en appuyant de nouveau sur le bouton, ou dans les réglages de notifications de votre navigateur.</p>
+      <h3>Le lien de votre rendez-vous</h3>
+      <p>Après une réservation, votre navigateur garde sur votre appareil le lien de la page «&nbsp;Votre rendez-vous&nbsp;», pour vous permettre de le revoir ou de l'annuler. Ce lien n'est connu que de vous&nbsp;; il reste dans votre navigateur et s'efface une fois le rendez-vous passé.</p>` : ''}
       <h3>Quand vous visitez le site</h3>
       <p>Le site compte ses visites lui-même, sans cookie et sans service extérieur&nbsp;: nombre de pages vues par jour, site de provenance, téléphone ou ordinateur. Aucune adresse IP n'est conservée et rien ne permet de vous reconnaître d'une visite à l'autre. Si votre navigateur demande à ne pas être suivi («&nbsp;Do Not Track&nbsp;» ou «&nbsp;Global Privacy Control&nbsp;»), votre visite n'est pas comptée.</p>
     </section>
@@ -383,13 +387,13 @@ function terms(site) {
     </section>
     <section id="rendez-vous">
       <h2>La réservation</h2>
-      <p>${rules.appointmentOnly ? html`<strong>${rules.appointmentOnly}.</strong> ` : ''}Vous choisissez une prestation, un jour et une heure parmi les créneaux libres, puis vous laissez votre nom et votre numéro de téléphone. Le rendez-vous est enregistré quand la page de confirmation s'affiche.</p>
+      <p>${rules.appointmentOnly ? html`<strong>${rules.appointmentOnly}.</strong> ` : ''}Vous choisissez une prestation, un jour et une heure parmi les créneaux libres, puis vous laissez votre nom et votre numéro de téléphone. Le rendez-vous est enregistré quand la page de confirmation s'affiche.${rules.dayBefore ? ' En ligne, on réserve au plus tard la veille.' : ''}</p>
       <p>Indiquez votre vrai nom et un numéro où vous joindre&nbsp;: le salon s'en sert pour vous prévenir en cas d'imprévu. Un même numéro peut avoir jusqu'à ${rules.maxActivePerPhone} rendez-vous à venir&nbsp;; au-delà, appelez le salon.</p>
       <p>Le salon peut être amené à déplacer ou annuler un rendez-vous (maladie, fermeture exceptionnelle). Vous êtes alors prévenu par téléphone.</p>
     </section>
     <section id="absence">
       <h2>Empêchement et rendez-vous manqué</h2>
-      <p>Un empêchement&nbsp;? Prévenez le salon le plus tôt possible au ${phone}${contact.messenger ? html` ou sur <a class="link" href="${contact.messenger}" target="_blank" rel="noopener">Messenger</a>` : ''}, pour que le créneau serve à quelqu'un d'autre.</p>
+      <p>Un empêchement&nbsp;? Annulez votre rendez-vous depuis le lien «&nbsp;Revoir ou annuler ce rendez-vous&nbsp;» reçu à la réservation, ou prévenez le salon le plus tôt possible au ${phone}${contact.messenger ? html` ou sur <a class="link" href="${contact.messenger}" target="_blank" rel="noopener">Messenger</a>` : ''}, pour que le créneau serve à quelqu'un d'autre.</p>
       ${rules.noShow ? html`<p><strong>${rules.noShow}</strong></p>` : ''}
     </section>
     <section>
@@ -421,6 +425,87 @@ function terms(site) {
   });
 }
 
+// ── « Votre rendez-vous » : la page personnelle d'un client ────────────────
+// Ouverte par la référence reçue à la réservation (lien de la confirmation, du rappel, de l'agenda).
+// On y revoit son rendez-vous, on y lit si le salon l'a confirmé, on peut l'annuler.
+
+const APPOINTMENT_STATUS = {
+  pending: { label: 'En attente de confirmation par le salon', icon: 'clock' },
+  confirmed: { label: 'Confirmé par le salon', icon: 'check' },
+  cancelled: { label: 'Rendez-vous annulé', icon: 'ban' },
+};
+
+function appointment(site, booking) {
+  const { config, now } = site;
+  const phone = config.contact.phone;
+  const callUs = phone ? html` au <a class="link" href="${telHref(phone)}">${phone}</a>` : '';
+
+  if (!booking) {
+    const body = html`
+<main id="contenu" class="page">
+  <div class="container not-found">
+    ${kicker('Votre rendez-vous')}
+    <h1 class="headline headline--xl">Rendez-vous <em>introuvable</em></h1>
+    <p class="deck">Ce lien ne mène à aucun rendez-vous. En cas de doute, appelez le salon${callUs}.</p>
+    <div class="actions">
+      ${button('Prendre rendez-vous', '/reservation', { variant: 'btn--accent' })}
+      ${button('Revenir à la une', '/', { variant: 'btn--outline' })}
+    </div>
+  </div>
+</main>`;
+    return layout(site, { title: 'Rendez-vous introuvable', body, styles: ['/css/pages.css'], noindex: true });
+  }
+
+  const start = toMinutes(booking.time);
+  const past = booking.date < now.date || (booking.date === now.date && start <= now.minutes);
+  const cancelled = booking.status === 'cancelled';
+  const status = APPOINTMENT_STATUS[booking.status] || APPOINTMENT_STATUS.pending;
+  const row = (label, value) => html`<div><dt>${label}</dt><dd>${value}</dd></div>`;
+  const body = html`
+<main id="contenu" class="page" data-appointment>
+  <header class="page-head container">
+    ${kicker('Votre rendez-vous')}
+    <h1 class="headline headline--xl" data-reveal="lines">${splitTitle([`${formatLong(booking.date)}`, `_à ${frTime(start)}_`])}</h1>
+    <p class="notice-line appointment-status appointment-status--${booking.status}" data-reveal>${icon(status.icon)}<span>${past && !cancelled ? 'Rendez-vous passé' : status.label}</span></p>
+  </header>
+  <div class="container appointment">
+    <dl class="done-recap" data-reveal>
+      ${row('Prestation', booking.serviceName)}
+      ${row('Date', formatLong(booking.date))}
+      ${row('Heure', `${frTime(start)} – ${frTime(toMinutes(booking.end))}`)}
+      ${row('Durée', durationLabel(booking.duration))}
+      ${row('Tarif', priceLabel(booking))}
+      ${row('Au nom de', booking.name)}
+    </dl>
+    ${!cancelled && !past ? html`
+    ${config.booking.noShow ? html`<p class="rules">${icon('info')}<span><strong>${config.booking.noShow}</strong> Si vous ne pouvez pas venir, annulez ici ou prévenez le salon${callUs}.</span></p>` : ''}
+    <div class="appointment-cancel" data-cancel>
+      <button type="button" class="btn btn--outline" data-cancel-ask><span>Annuler ce rendez-vous</span>${icon('ban')}</button>
+      <div class="appointment-confirm" data-cancel-confirm hidden>
+        <p class="appointment-question">Annuler ce rendez-vous&nbsp;? Le créneau sera proposé à quelqu'un d'autre.</p>
+        <button type="button" class="btn btn--danger" data-cancel-yes><span>Oui, annuler</span></button>
+        <button type="button" class="btn btn--outline" data-cancel-no><span>Non, le garder</span></button>
+      </div>
+      <p class="notice notice--error" data-cancel-error role="alert" hidden></p>
+      <noscript><p class="notice notice--warn">Pour annuler, appelez le salon${callUs}.</p></noscript>
+    </div>` : ''}
+    <div class="actions">
+      ${button(cancelled || past ? 'Prendre un autre rendez-vous' : 'Prendre un autre rendez-vous', '/reservation', { variant: cancelled || past ? 'btn--accent' : 'btn--outline' })}
+      ${cancelled || past ? '' : button('Itinéraire', config.maps.directions, { variant: 'btn--outline', iconName: 'arrow-up-right', external: true })}
+    </div>
+  </div>
+</main>`;
+
+  return layout(site, {
+    title: 'Votre rendez-vous',
+    body,
+    data: { ref: booking.ref },
+    noindex: true,
+    styles: ['/css/pages.css', '/css/booking.css'],
+    scripts: cancelled || past ? [] : ['/js/rendez-vous.js'],
+  });
+}
+
 // ── Page introuvable ───────────────────────────────────────────────────────
 
 function notFound(site) {
@@ -440,4 +525,4 @@ function notFound(site) {
   return layout(site, { title: 'Page introuvable', body, styles: ['/css/pages.css'], noindex: true });
 }
 
-module.exports = { services, service, gallery, find, legal, privacy, terms, notFound };
+module.exports = { services, service, gallery, find, legal, privacy, terms, appointment, notFound };

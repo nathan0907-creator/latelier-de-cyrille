@@ -12,6 +12,9 @@ function openRanges(config, closures, date) {
 
 const lastBookableDate = (config, today) => addDays(today, config.booking.maxDaysAhead);
 
+/** Premier jour réservable en ligne : aujourd'hui, ou demain quand on réserve au plus tard la veille. */
+const firstBookableDate = (config, today) => (config.booking.dayBefore ? addDays(today, 1) : today);
+
 function hasConflict(bookings, date, start, duration, ignoreId = null) {
   return bookings.some(b => b.date === date && isActive(b) && b.id !== ignoreId
     && start < b.start + b.duration && b.start < start + duration);
@@ -25,7 +28,7 @@ function hasConflict(bookings, date, start, duration, ignoreId = null) {
  */
 function daySlots({ config, bookings, closures, service, date, now, mode = 'public' }) {
   const salon = mode === 'salon';
-  if (date < now.date || (!salon && date > lastBookableDate(config, now.date))) {
+  if (date < now.date || (!salon && (date < firstBookableDate(config, now.date) || date > lastBookableDate(config, now.date)))) {
     return { closed: true, slots: [] };
   }
   const ranges = openRanges(config, closures, date);
@@ -49,9 +52,10 @@ function daySlots({ config, bookings, closures, service, date, now, mode = 'publ
 
 /** État de chaque jour d'un mois : « out » (hors fenêtre), « closed », « full » ou « open ». */
 function monthSummary({ config, bookings, closures, service, month, now }) {
+  const first = firstBookableDate(config, now.date);
   const last = lastBookableDate(config, now.date);
   return daysInMonth(month).map(date => {
-    if (date < now.date || date > last) return { date, state: 'out', free: 0 };
+    if (date < first || date > last) return { date, state: 'out', free: 0 };
     const { closed, slots } = daySlots({ config, bookings, closures, service, date, now });
     if (closed) return { date, state: 'closed', free: 0 };
     const free = slots.filter(s => s.available).length;
@@ -138,6 +142,6 @@ function closurePeriods({ config, closures, now, horizon = 90 }) {
 }
 
 module.exports = {
-  isActive, openRanges, lastBookableDate, hasConflict, daySlots, monthSummary, nextSlot, nextOpenDays, slotProblem, openStatus,
+  isActive, openRanges, firstBookableDate, lastBookableDate, hasConflict, daySlots, monthSummary, nextSlot, nextOpenDays, slotProblem, openStatus,
   closurePeriods,
 };

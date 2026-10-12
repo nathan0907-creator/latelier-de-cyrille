@@ -11,7 +11,7 @@ function loadConfig(raw = require('../salon.config.js'), env = process.env) {
 
   const booking = {
     slotStep: 30, minNoticeMinutes: 120, maxDaysAhead: 60, maxActivePerPhone: 3,
-    retentionDays: 365, appointmentOnly: '', noShow: '', reminders: [1440, 120], ...raw.booking,
+    retentionDays: 365, appointmentOnly: '', noShow: '', reminders: [1440, 120], dayBefore: false, ...raw.booking,
   };
   if (!Array.isArray(booking.reminders) || booking.reminders.some(m => !Number.isInteger(m) || m < 10)) {
     fail('« booking.reminders » doit lister des délais en minutes (au moins 10).');

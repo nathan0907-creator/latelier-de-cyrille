@@ -6,7 +6,7 @@ Aucune dépendance à installer : il suffit de Node.js 22 ou plus récent.
 
 ## Démonstration en ligne
 
-L'adresse de démonstration sur GitHub Pages (https://nathan0907-creator.github.io/latelier-de-cyrille/) renvoie maintenant au vrai site, la version complète : chaque page de l'ancienne démonstration mène à la même page du site en ligne. L'adresse du vrai site est donnée par `--live` dans `.github/workflows/demo.yml` : à remplacer par le nom de domaine quand il sera branché.
+L'adresse de démonstration sur GitHub Pages (https://nathan0907-creator.github.io/latelier-de-cyrille/) renvoie maintenant au vrai site, la version complète : chaque page de l'ancienne démonstration mène à la même page du site en ligne. L'adresse du vrai site est celle de `siteUrl`, dans `salon.config.js`.
 
 Sans adresse de vrai site, `scripts/export-demo.js` fabrique comme avant une copie « pour de faux » : toutes les pages, une réservation calculée dans le navigateur avec les vraies règles (horaires, durées, jours fériés), rien d'enregistré, pas d'espace salon.
 
@@ -90,7 +90,9 @@ Cyrille peut aussi ajouter, décrire, ranger et retirer des photos elle-même, d
 - Réservation en trois étapes : la prestation (choisie dans le tableau des tarifs), le créneau (jour et heure), le coupon (coordonnées). Les créneaux tiennent compte de la durée de chaque prestation et de la pause déjeuner. Deux personnes ne peuvent pas prendre le même créneau.
 - Disponibilités en direct : si quelqu'un réserve pendant que vous hésitez, sa languette s'arrache sous vos yeux.
 - Depuis la une, une languette de l'affichette ouvre la réservation directement sur le jour choisi.
-- **Rappels** : sur la confirmation, « Me le rappeler » envoie une notification sur l'appareil du client la veille et deux heures avant (délais réglables : `booking.reminders`), même si le site est fermé. « Ajouter à mon agenda » donne un fichier d'agenda qui sonne aux mêmes moments.
+- **Au plus tard la veille** : en ligne, on ne prend pas de rendez-vous pour le jour même (`booking.dayBefore`). La coiffeuse, elle, peut toujours en noter un depuis son espace.
+- **Notifications** : au moment de réserver, une case déjà cochée propose d'être prévenu sur son appareil. Le client apprend alors que le salon a **confirmé** son rendez-vous (ou l'a déplacé, ou annulé), puis reçoit un rappel la veille et deux heures avant (délais réglables : `booking.reminders`), même si le site est fermé. « Ajouter à mon agenda » donne un fichier d'agenda qui sonne aux mêmes moments.
+- **Votre rendez-vous** : chaque réservation a sa page personnelle (lien sur la confirmation, dans la notification, dans l'agenda, et rappelé en haut de la page de réservation sur le même appareil). On y voit si le salon a confirmé, et on peut **annuler** jusqu'à l'heure du rendez-vous : le créneau est aussitôt reproposé et la coiffeuse est prévenue en direct.
 - Pages légales : mentions légales, confidentialité et cookies (RGPD), conditions d'utilisation. Un avis sur les cookies, où « Refuser » pèse autant qu'« Accepter », ne porte que sur le plan Google Maps : le site ne dépose rien d'autre.
 
 **Pour la coiffeuse (`/salon`)**
@@ -174,9 +176,11 @@ En ligne sur Cloudflare, les mêmes données sont rangées dans la base du site 
 npm test
 ```
 
-76 tests couvrent le calcul des créneaux, les réservations, l'authentification, la sécurité HTTP, le lancement, les rappels (chiffrement vérifié sur l'exemple de la norme), la liste de contrôle (référencement, liens, images, HTTPS, fichiers privés, fréquentation) les jours fériés, les pages par prestation, les réglages de l'espace salon (tarifs, horaires, photos, déplacement d'un rendez-vous) et le fonctionnement sur Cloudflare (pages, réservation et direct à travers l'adaptateur, code de configuration, base de données, réglages et photos).
+81 tests couvrent le calcul des créneaux, les réservations, l'authentification, la sécurité HTTP, le lancement, les rappels (chiffrement vérifié sur l'exemple de la norme), la liste de contrôle (référencement, liens, images, HTTPS, fichiers privés, fréquentation) les jours fériés, les pages par prestation, la réservation au plus tard la veille, l'annulation par le client et les notifications du salon, les réglages de l'espace salon (tarifs, horaires, photos, déplacement d'un rendez-vous) et le fonctionnement sur Cloudflare (pages, réservation et direct à travers l'adaptateur, code de configuration, base de données, réglages et photos).
 
 ## Mettre le site en ligne sur Cloudflare
+
+**C'est fait** : le site est en ligne sur https://latelierdecyrille.com, nom de domaine acheté chez Cloudflare et branché sur le site depuis le tableau de bord (`siteUrl` le déclare dans `salon.config.js`). L'adresse `www.latelierdecyrille.com`, elle, ne répond pas tant qu'elle n'a pas été ajoutée au même endroit (Worker → **Settings** → **Domains & Routes** → **Add** → **Custom domain**) ; une fois ajoutée, le site la renvoie tout seul vers l'adresse sans `www.`. Ce qui suit reste le mode d'emploi pour refaire l'installation.
 
 Cloudflare fait tourner le site sur ses serveurs, jour et nuit, sans ordinateur allumé au salon : réservation, direct, espace de la coiffeuse, rappels par notification et fréquentation fonctionnent comme sur l'ordinateur, en HTTPS. L'offre gratuite de Cloudflare suffit largement pour un salon (100 000 requêtes par jour, soit plusieurs milliers de visites) : seul le nom de domaine se paie.
 

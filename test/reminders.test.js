@@ -195,7 +195,12 @@ test('rappels : rendez-vous proche, annulé, supprimé, abonnement disparu', asy
   assert.deepEqual(salon.reminders.refFor(soon).when, ['2 h avant']);
   const tooClose = salon.book({ time: '11:00', phone: '0698765432' });
   assert.deepEqual(salon.reminders.refFor(tooClose).when, []);
-  assert.equal(salon.reminders.subscribe(salon.reminders.refFor(tooClose).ref, browser().subscription).status, 409);
+  // Trop proche pour un rappel, mais l'abonnement est accepté : il sert à dire que le salon a confirmé.
+  assert.deepEqual(salon.reminders.subscribe(salon.reminders.refFor(tooClose).ref, browser().subscription), { ok: true, when: [] });
+  salon.now.minutes = 11 * 60;
+  assert.equal(salon.reminders.subscribe(salon.reminders.refFor(tooClose).ref, browser().subscription).status, 409, 'rendez-vous commencé');
+  assert.equal(await salon.reminders.tick(), 0);
+  salon.now.minutes = 9 * 60;
 
   // Annulé par le salon : plus aucun message, l'abonnement est effacé.
   salon.reminders.subscribe(salon.reminders.refFor(soon).ref, browser().subscription);

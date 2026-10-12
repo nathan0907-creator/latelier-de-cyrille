@@ -24,10 +24,12 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
  *   assetVersion: l'empreinte des styles et des scripts, calculée à la publication ;
  *   serveStatic : les fichiers de public/, servis par Cloudflare avant d'arriver ici ;
  *   live        : les réglages du direct (src/events.js).
+ * sendPush ne se donne que dans les tests : de quoi envoyer une notification sans passer par Internet.
  */
 function createApp({
   config: base, store, clock = () => nowInZone(base.timezone),
   setupCode, timers = true, assetVersion = createVersion(base.publicDir), serveStatic = createStatic(base.publicDir), live = {},
+  sendPush,
 }) {
   // La configuration « vivante » : salon.config.js, plus ce que la coiffeuse a réglé depuis son espace.
   const settings = createSettings({ base, store });
@@ -36,7 +38,11 @@ function createApp({
   const holidays = createHolidays({ config, store, clock });
   const closedDays = () => holidays.closures();
   const bookings = createBookings({ config, store, clock, closures: closedDays });
-  const reminders = createReminders({ config, store, clock });
+  const reminders = createReminders({ config, store, clock, ...(sendPush && { send: sendPush }) });
+  // Les nouvelles du salon partent sans faire attendre la coiffeuse ; un envoi raté ne casse rien.
+  const tell = (booking, kind) => {
+    reminders.notify(booking, kind).catch(err => console.error('[notifications]', err));
+  };
   const auth = createAuth({ store, setupCode });
   const events = createEvents(live);
   const stats = createStats({ store, clock, saveEveryMs: timers ? 30_000 : 0 });
@@ -157,6 +163,20 @@ function createApp({
       stats.booking();
       // « reminder » : la référence qui permet à ce client, et à lui seul, de demander un rappel.
       return json(201, { booking: bookings.publicView(result.booking), reminder: reminders.refFor(result.booking) });
+    }
+
+    // Le client annule lui-même son rendez-vous, avec la référence reçue à la réservation.
+    if (route === 'POST /api/bookings/cancel') {
+      const limit = limits.reminder.take(ip);
+      if (!limit.ok) return tooMany(limit, 'Trop de demandes. Réessayez dans quelques minutes.');
+      const body = await readJson(req);
+      const found = reminders.find(body.ref);
+      if (!found) return json(404, { error: 'Rendez-vous introuvable.' });
+      const result = bookings.cancelByClient(found.id);
+      if (!result.ok) return reject(result);
+      reminders.forget(result.booking.id);
+      announce('updated', result.booking);
+      return json(200, { booking: bookings.publicView(result.booking) });
     }
 
     // Rappel par notification : le client qui vient de réserver l'active (ou le retire) sur son appareil.
@@ -317,11 +337,15 @@ function createApp({
         reminders.reschedule(moved.booking);
         events.send('public', 'slots', { date: moved.from.date });
         announce('updated', moved.booking);
+        tell(moved.booking, 'moved');
         return json(200, { booking: moved.booking });
       }
       const result = bookings.setStatus(bookingRoute[1], body.status);
       if (!result.ok) return reject(result);
       announce('updated', result.booking);
+      // Le client est prévenu sur son appareil : rendez-vous validé, ou annulé par le salon.
+      if (result.booking.status === 'confirmed' && result.previous === 'pending') tell(result.booking, 'confirmed');
+      if (result.booking.status === 'cancelled' && result.previous !== 'cancelled') tell(result.booking, 'cancelled');
       return json(200, { booking: result.booking });
     }
     if (bookingRoute && method === 'DELETE') {
@@ -423,6 +447,14 @@ function createApp({
     if (pathname === '/sitemap.xml') return send(req, res, 200, { 'Content-Type': 'application/xml; charset=utf-8' }, sitemap(originOf(req)));
     if (pathname === '/site.webmanifest' || pathname === '/salon.webmanifest') {
       return send(req, res, 200, { 'Content-Type': 'application/manifest+json; charset=utf-8' }, manifest(pathname === '/salon.webmanifest'));
+    }
+
+    // « Votre rendez-vous » : la page personnelle d'un client, ouverte par sa référence.
+    if (pathname === '/rendez-vous') {
+      const found = reminders.find(url.searchParams.get('r'));
+      const site = siteContext(pathname, req);
+      const headers = { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow', 'Referrer-Policy': 'no-referrer' };
+      return sendHtml(req, res, found ? 200 : 404, views.appointment(site, found && { ...bookings.publicView(found), ref: url.searchParams.get('r') }), headers);
     }
 
     // Une page du journal, ou la page d'une prestation (/prestations/balayage).
