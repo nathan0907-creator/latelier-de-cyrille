@@ -163,7 +163,7 @@ module.exports = {
   legal: {
     company: "L'atelier de Cyrille",
     status: '[forme juridique à compléter]',
-    siret: '[SIRET à compléter]',
+    siret: '844 660 209 00033',
     publisher: 'Cyrille [nom à compléter]',
     // Cloudflare (voir « Mettre le site en ligne sur Cloudflare » dans le README).
     host: 'Cloudflare, Inc., 101 Townsend St, San Francisco, CA 94107, États-Unis · +1 650 319 8930 · cloudflare.com',
