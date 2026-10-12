@@ -2,7 +2,7 @@
 
 const crypto = require('node:crypto');
 const { isValidDate, toMinutes, fromMinutes, addDays } = require('./time');
-const { slotProblem, hasConflict } = require('./availability');
+const { slotProblem, hasConflict, daySlots } = require('./availability');
 
 const NAME_RE = /^\p{L}[\p{L}\p{M}'’ .-]{1,59}$/u;
 const STATUSES = ['pending', 'confirmed', 'cancelled'];
@@ -99,6 +99,36 @@ function createBookings({ config, store, clock }) {
     return { ok: true, booking: store.bookings.update(id, { status }) };
   }
 
+  /** Les créneaux où ce rendez-vous pourrait être déplacé ce jour-là (lui-même ne se gêne pas). */
+  function movableSlots(id, date) {
+    const booking = store.bookings.get(id);
+    if (!booking) return failure(404, 'Rendez-vous introuvable.');
+    if (!isValidDate(date)) return failure(400, 'Date invalide.');
+    const day = daySlots({
+      config, bookings: store.bookings.all().filter(b => b.id !== id), closures: store.closures.all(),
+      service: { duration: booking.duration }, date, now: clock(), mode: 'salon',
+    });
+    return { ok: true, closed: day.closed, slots: day.slots.map(({ time, available }) => ({ time, available })) };
+  }
+
+  /** Déplace un rendez-vous à un autre jour ou une autre heure (par la coiffeuse). */
+  function move(id, { date, time }) {
+    const booking = store.bookings.get(id);
+    if (!booking) return failure(404, 'Rendez-vous introuvable.');
+    if (!isValidDate(date)) return failure(400, 'Date invalide.');
+    const start = toMinutes(time);
+    if (start === null) return failure(400, 'Horaire invalide.');
+    if (date < clock().date) return failure(400, 'Choisissez une date à venir.');
+    const problem = slotProblem({
+      config, bookings: store.bookings.all().filter(b => b.id !== id), closures: store.closures.all(),
+      service: { duration: booking.duration }, date, start, now: clock(), mode: 'salon',
+    });
+    if (problem === 'taken') return failure(409, 'Ce créneau est déjà pris par un autre rendez-vous.', { code: 'slot_taken' });
+    if (problem) return failure(409, 'Le salon est fermé à ce moment-là.', { code: 'slot_unavailable' });
+    const from = { date: booking.date, time: booking.time };
+    return { ok: true, from, booking: store.bookings.update(id, { date, time: fromMinutes(start), start }) };
+  }
+
   function remove(id) {
     const booking = store.bookings.remove(id);
     return booking ? { ok: true, booking } : failure(404, 'Rendez-vous introuvable.');
@@ -116,7 +146,7 @@ function createBookings({ config, store, clock }) {
     serviceName: b.serviceName, duration: b.duration, price: b.price, priceFrom: Boolean(b.priceFrom), name: b.name,
   });
 
-  return { create, setStatus, remove, purgeOld, publicView };
+  return { create, setStatus, move, movableSlots, remove, purgeOld, publicView };
 }
 
 module.exports = { createBookings, normalizePhone, cleanText };

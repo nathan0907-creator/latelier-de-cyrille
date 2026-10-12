@@ -34,22 +34,48 @@ const FILES = {
   sessions: 'sessions.json',
   reminders: 'rappels.json',
   stats: 'frequentation.json',
+  settings: 'reglages.json',
 };
+
+/** Le dossier des photos déposées depuis l'espace salon, dans data/. */
+const MEDIA_DIR = 'photos';
 
 /** Les données dans des fichiers JSON, un par sorte de données (sur l'ordinateur du salon). */
 function fileBackend(dataDir) {
   fs.mkdirSync(dataDir, { recursive: true });
   const file = key => path.join(dataDir, FILES[key]);
+  const media = name => path.join(dataDir, MEDIA_DIR, path.basename(name));
   return {
     read: (key, fallback) => readJson(file(key), fallback),
     write: (key, data) => writeJsonAtomic(file(key), data),
+    // Les photos déposées : un fichier chacune, dans data/photos/.
+    readBlob(name) {
+      try {
+        return fs.readFileSync(media(name));
+      } catch {
+        return null;
+      }
+    },
+    writeBlob(name, bytes) {
+      fs.mkdirSync(path.join(dataDir, MEDIA_DIR), { recursive: true });
+      fs.writeFileSync(media(name), bytes);
+    },
+    removeBlob: name => fs.rmSync(media(name), { force: true }),
+    listBlobs() {
+      try {
+        return fs.readdirSync(path.join(dataDir, MEDIA_DIR));
+      } catch {
+        return [];
+      }
+    },
   };
 }
 
 /**
- * Stockage du salon : rendez-vous, fermetures, rappels, compte et sessions de la coiffeuse.
+ * Stockage du salon : rendez-vous, fermetures, rappels, réglages, compte et sessions de la coiffeuse.
  * Tout est gardé en mémoire et enregistré à chaque changement : dans les fichiers de data/
- * (un dossier donné), ou ailleurs avec un autre « backend » ({ read, write }, voir cloudflare/storage.js).
+ * (un dossier donné), ou ailleurs avec un autre « backend » ({ read, write } pour les données,
+ * { readBlob, writeBlob, removeBlob, listBlobs } pour les photos : voir cloudflare/storage.js).
  */
 function createStore(target) {
   const backend = typeof target === 'string' ? fileBackend(target) : target;
@@ -60,6 +86,7 @@ function createStore(target) {
     sessions: backend.read('sessions', {}),
     reminders: backend.read('reminders', { identity: null, list: [] }),
     stats: backend.read('stats', {}),
+    settings: backend.read('settings', null),
   };
   const save = key => backend.write(key, state[key]);
 
@@ -157,6 +184,21 @@ function createStore(target) {
     stats: {
       days: () => state.stats,
       save: () => save('stats'),
+    },
+    /** Réglages faits depuis l'espace salon : prestations, horaires, photos (voir src/settings.js). */
+    settings: {
+      get: () => state.settings,
+      set(record) {
+        state.settings = record;
+        save('settings');
+      },
+    },
+    /** Photos déposées depuis l'espace salon : lues à la demande, jamais gardées en mémoire. */
+    media: {
+      read: name => backend.readBlob(name),
+      write: (name, bytes) => backend.writeBlob(name, bytes),
+      remove: name => backend.removeBlob(name),
+      list: () => backend.listBlobs(),
     },
     admin: {
       get: () => state.admin,

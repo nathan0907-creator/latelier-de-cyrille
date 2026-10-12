@@ -145,6 +145,12 @@ function createReminders({ config, store, clock, send = sendPush }) {
     labels: leads.map(leadLabel),
     refFor, subscribe, unsubscribe, tick, nextDue,
     forget: bookingId => store.reminders.removeWhere(r => r.bookingId === bookingId),
+    /** Après un déplacement : les rappels repartent des échéances de la nouvelle date. */
+    reschedule(booking) {
+      for (const reminder of store.reminders.all().filter(r => r.bookingId === booking.id)) {
+        store.reminders.update(reminder, { pending: upcoming(booking, clock()), failures: 0 });
+      }
+    },
   };
 }
 

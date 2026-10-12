@@ -9,6 +9,7 @@ const start = () => startSite();
 
 const booking = (extra = {}) => ({ serviceId: 'court', date: TUESDAY, time: '10:00', name: 'Léa Dupont', phone: '0612345678', ...extra });
 const sessionCookie = res => res.headers['set-cookie'][0].split(';')[0];
+const username = 'cyrille';
 
 test('pages : en-têtes de sécurité, 404, méthodes refusées', async t => {
   const site = await start();
@@ -99,11 +100,12 @@ test('espace salon : fermé sans session, configuration, connexion, actions, dé
   for (const [method, path] of [['GET', '/api/salon/data'], ['GET', '/api/salon/events'], ['POST', '/api/salon/bookings'], ['DELETE', '/api/salon/bookings/abcdef123'], ['POST', '/api/salon/closures'], ['POST', '/api/salon/password']]) {
     assert.equal((await site.request(method, path, { body: method === 'GET' ? undefined : {} })).status, 401, `${method} ${path}`);
   }
-  assert.deepEqual((await site.request('GET', '/api/salon/session')).json, { configured: false, authenticated: false, codeSource: 'console' });
+  assert.deepEqual((await site.request('GET', '/api/salon/session')).json, { configured: false, authenticated: false, username: false, codeSource: 'console' });
 
-  assert.equal((await site.request('POST', '/api/salon/login', { body: { password } })).status, 409, 'pas encore configuré');
-  assert.equal((await site.request('POST', '/api/salon/setup', { body: { code: 'AAAA-AAAA', password } })).status, 403);
-  const setup = await site.request('POST', '/api/salon/setup', { body: { code: site.app.auth.setupCode(), password } });
+  assert.equal((await site.request('POST', '/api/salon/login', { body: { username, password } })).status, 409, 'pas encore configuré');
+  assert.equal((await site.request('POST', '/api/salon/setup', { body: { code: 'AAAA-AAAA', username, password } })).status, 403);
+  assert.equal((await site.request('POST', '/api/salon/setup', { body: { code: site.app.auth.setupCode(), password } })).status, 400, 'identifiant obligatoire');
+  const setup = await site.request('POST', '/api/salon/setup', { body: { code: site.app.auth.setupCode(), username, password } });
   assert.equal(setup.status, 200);
   const cookieHeader = setup.headers['set-cookie'][0];
   assert.match(cookieHeader, /HttpOnly/);
@@ -111,7 +113,7 @@ test('espace salon : fermé sans session, configuration, connexion, actions, dé
   const cookie = sessionCookie(setup);
   const authed = { headers: { Cookie: cookie } };
 
-  assert.deepEqual((await site.request('GET', '/api/salon/session', authed)).json, { configured: true, authenticated: true });
+  assert.deepEqual((await site.request('GET', '/api/salon/session', authed)).json, { configured: true, authenticated: true, username: true });
   const data = await site.request('GET', '/api/salon/data', authed);
   assert.equal(data.json.bookings.length, 1);
   assert.equal(data.json.bookings[0].phone, '06 12 34 56 78');
@@ -146,7 +148,8 @@ test('espace salon : fermé sans session, configuration, connexion, actions, dé
   assert.equal((await site.request('POST', '/api/salon/logout', authed)).status, 200);
   assert.equal((await site.request('GET', '/api/salon/data', authed)).status, 401, 'le jeton ne vaut plus rien après déconnexion');
 
-  const login = await site.request('POST', '/api/salon/login', { body: { password } });
+  assert.equal((await site.request('POST', '/api/salon/login', { body: { username: 'quelqu-un-d-autre', password } })).status, 401);
+  const login = await site.request('POST', '/api/salon/login', { body: { username, password } });
   assert.equal(login.status, 200);
   assert.equal((await site.request('GET', '/api/salon/data', { headers: { Cookie: sessionCookie(login) } })).status, 200);
 });
@@ -155,14 +158,14 @@ test('connexion : blocage après plusieurs échecs', async t => {
   const site = await start();
   t.after(site.stop);
   const password = crypto.randomBytes(12).toString('base64url');
-  await site.request('POST', '/api/salon/setup', { body: { code: site.app.auth.setupCode(), password } });
+  await site.request('POST', '/api/salon/setup', { body: { code: site.app.auth.setupCode(), username, password } });
 
   const statuses = [];
   for (let i = 0; i < 6; i++) {
-    statuses.push((await site.request('POST', '/api/salon/login', { body: { password: `faux-mot-de-passe-${i}` } })).status);
+    statuses.push((await site.request('POST', '/api/salon/login', { body: { username, password: `faux-mot-de-passe-${i}` } })).status);
   }
   assert.deepEqual(statuses, [401, 401, 401, 401, 401, 429]);
-  const blocked = await site.request('POST', '/api/salon/login', { body: { password } });
+  const blocked = await site.request('POST', '/api/salon/login', { body: { username, password } });
   assert.equal(blocked.status, 429, 'même le bon mot de passe attend la fin du blocage');
   assert.ok(Number(blocked.headers['retry-after']) > 0);
 });

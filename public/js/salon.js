@@ -1,10 +1,12 @@
-// Espace salon : connexion, agenda du jour, liste des rendez-vous, fermetures.
+// Espace salon : connexion, agenda du jour, liste des rendez-vous, fermetures, fréquentation,
+// et les réglages que la coiffeuse fait elle-même (tarifs, horaires, photos : salon-reglages.js).
 // Rien n'est chargé tant que la coiffeuse n'est pas connectée ; ensuite tout arrive en direct.
 
 import {
   h, icon, api, animate, readPageData, debounce, addDays, mondayIndex, formatLong, formatShort,
   capitalize, fromMinutes, frTime, durationLabel, euros,
 } from './lib.js';
+import { createSettingsViews } from './salon-reglages.js';
 
 const root = document.querySelector('[data-salon]');
 const toastBox = document.querySelector('[data-toasts]');
@@ -26,6 +28,8 @@ const state = {
 };
 
 const refs = {};
+// Le compte a-t-il un identifiant ? (Un compte créé avant leur arrivée n'a qu'un mot de passe.)
+let accountHasUsername = true;
 let source = null;
 let clock = null;
 let detail = null;
@@ -186,15 +190,23 @@ function showAuth(mode, notice = '') {
     error.hidden = false;
   };
 
+  const withUsername = setup || accountHasUsername;
   const form = h('form', { class: 'auth-form', novalidate: true },
-    // Aide les gestionnaires de mots de passe à ranger l'identifiant au bon endroit.
-    h('input', { class: 'sr-only', type: 'text', name: 'username', autocomplete: 'username', value: 'salon', tabindex: '-1', 'aria-hidden': 'true', readonly: true }),
     setup && field({
       id: 'acces-code',
       label: 'Code de configuration',
       hint: CODE_HINTS[codeSource] || CODE_HINTS.console,
       control: h('input', { name: 'code', type: 'text', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', maxlength: '64', required: true }),
     }),
+    withUsername
+      ? field({
+        id: 'acces-identifiant',
+        label: setup ? 'Choisissez un identifiant' : 'Identifiant',
+        hint: setup ? 'Votre prénom ou votre adresse e-mail, par exemple. Il vous sera demandé à chaque connexion.' : '',
+        control: h('input', { name: 'username', type: 'text', autocomplete: 'username', autocapitalize: 'none', spellcheck: 'false', maxlength: '60', required: true }),
+      })
+      // Compte ancien, sans identifiant : ce champ caché aide le gestionnaire de mots de passe à s'y retrouver.
+      : h('input', { class: 'sr-only', type: 'text', name: 'username', autocomplete: 'username', value: 'salon', tabindex: '-1', 'aria-hidden': 'true', readonly: true }),
     field({
       id: 'acces-mot-de-passe',
       label: setup ? 'Choisissez un mot de passe' : 'Mot de passe',
@@ -213,6 +225,7 @@ function showAuth(mode, notice = '') {
     event.preventDefault();
     error.hidden = true;
     const values = Object.fromEntries(new FormData(form));
+    if (withUsername && values.username.trim().length < 3) return fail(setup ? 'Choisissez un identifiant de 3 caractères au moins.' : 'Saisissez votre identifiant.');
     if (setup && values.password.length < 10) return fail('Le mot de passe doit contenir au moins 10 caractères.');
     if (setup && values.password !== values.confirm) return fail('Les deux mots de passe ne sont pas identiques.');
     if (!values.password) return fail('Saisissez votre mot de passe.');
@@ -220,8 +233,9 @@ function showAuth(mode, notice = '') {
     try {
       await api(setup ? '/api/salon/setup' : '/api/salon/login', {
         method: 'POST',
-        body: setup ? { code: values.code, password: values.password } : { password: values.password },
+        body: setup ? { code: values.code, username: values.username, password: values.password } : { username: values.username, password: values.password },
       });
+      if (setup) accountHasUsername = true;
       await enter();
     } catch (err) {
       fail(err.message);
@@ -236,7 +250,7 @@ function showAuth(mode, notice = '') {
       h('p', { class: 'eyebrow' }, 'Espace salon'),
       h('h1', { class: 'auth-title' }, setup ? 'Première connexion' : `Bonjour${config.owner ? ` ${config.owner}` : ''}`),
       h('p', { class: 'auth-lead' }, setup
-        ? "Créez le mot de passe qui protégera l'agenda et les coordonnées de vos clients."
+        ? "Créez l'identifiant et le mot de passe qui protégeront l'agenda et les coordonnées de vos clients."
         : 'Connectez-vous pour voir vos rendez-vous.'),
       notice && h('p', { class: 'notice' }, notice),
       form,
@@ -269,6 +283,9 @@ async function loadData() {
   state.nowMinutes = data.nowMinutes;
   state.bookings = data.bookings;
   state.closures = data.closures;
+  // La carte et les horaires peuvent avoir été modifiés depuis l'ouverture de la page.
+  config.services = data.services;
+  config.hours = data.hours;
   if (followToday) state.day = data.today;
 }
 
@@ -359,10 +376,23 @@ async function enter() {
 
 const TABS = [
   { key: 'day', label: 'Journée', icon: 'calendar' },
-  { key: 'list', label: 'Tous les rendez-vous', icon: 'list' },
+  { key: 'list', label: 'Rendez-vous', icon: 'list' },
   { key: 'closures', label: 'Fermetures', icon: 'ban' },
+  { key: 'prices', label: 'Tarifs', icon: 'tag' },
+  { key: 'hours', label: 'Horaires', icon: 'clock' },
+  { key: 'photos', label: 'Photos', icon: 'image' },
   { key: 'audience', label: 'Fréquentation', icon: 'eye' },
 ];
+
+// Tarifs, horaires, photos : après un enregistrement, l'agenda relit la carte et les horaires.
+const settingsViews = createSettingsViews({
+  call, toast, field,
+  view: () => refs.view,
+  onSaved: async () => {
+    await loadData();
+    renderStats();
+  },
+});
 
 function mountDashboard() {
   refs.live = h('span', { class: 'salon-live' }, h('span', { class: 'dot', 'aria-hidden': 'true' }), h('span', {}, 'En direct'));
@@ -421,6 +451,10 @@ const VIEWS = {
   list: { mount: mountList, render: renderList },
   closures: { mount: mountClosures, render: renderClosures },
   audience: { mount: mountAudience, render: () => {} },
+  // Ces vues sont des formulaires : l'arrivée d'un rendez-vous ne doit pas les redessiner.
+  prices: { mount: settingsViews.mountPrices, render: () => {} },
+  hours: { mount: settingsViews.mountHours, render: () => {} },
+  photos: { mount: settingsViews.mountPhotos, render: () => {} },
 };
 
 function setTab(tab) {
@@ -849,8 +883,9 @@ function openDetail(id) {
 
 function refreshDetail() {
   if (!detail) return;
-  if (state.bookings.some(b => b.id === detail.id)) renderDetail();
-  else detail.sheet.dialog.close();
+  if (!state.bookings.some(b => b.id === detail.id)) detail.sheet.dialog.close();
+  // En plein déplacement, on ne redessine pas : le jour et l'heure en cours de choix seraient perdus.
+  else if (detail.asking !== 'move') renderDetail();
 }
 
 async function detailAction(run) {
@@ -881,8 +916,55 @@ function renderDetail({ focus = false } = {}) {
   const button = (label, variant, onclick, iconName) => h('button', { type: 'button', class: `btn btn--small ${variant}`, onclick },
     h('span', {}, label), iconName ? icon(iconName) : null);
 
+  /** De quoi déplacer le rendez-vous : un jour, puis une heure parmi celles qui restent libres. */
+  const moveControls = () => {
+    const day = h('input', { type: 'date', min: state.today, required: true });
+    day.value = booking.date >= state.today ? booking.date : state.today;
+    const slot = h('select', { required: true });
+    const go = button('Déplacer ici', '', () => detailAction(async () => {
+      const result = await call(`/api/salon/bookings/${booking.id}`, { method: 'PATCH', body: { date: day.value, time: slot.value } });
+      state.day = result.booking.date;
+      upsert(result.booking);
+      toast(`${result.booking.name} · ${whenLabel(result.booking)}`, { title: 'Rendez-vous déplacé' });
+    }), 'check');
+    go.disabled = true;
+    let request = 0;
+    const loadTimes = async () => {
+      const current = ++request;
+      go.disabled = true;
+      slot.replaceChildren(h('option', { value: '' }, day.value ? 'Chargement…' : 'Choisissez une date'));
+      if (!day.value) return;
+      try {
+        const result = await call(`/api/salon/bookings/${booking.id}/slots?date=${day.value}`);
+        if (current !== request) return;
+        // Son propre créneau n'est pas proposé : déplacer, c'est aller ailleurs.
+        const free = result.slots.filter(s => s.available && !(day.value === booking.date && s.time === booking.time));
+        if (!free.length) {
+          slot.replaceChildren(h('option', { value: '' }, result.closed ? 'Salon fermé ce jour-là' : 'Aucun créneau libre'));
+          return;
+        }
+        slot.replaceChildren(...free.map(s => h('option', { value: s.time }, frTime(s.time))));
+        go.disabled = false;
+      } catch (err) {
+        if (current === request) slot.replaceChildren(h('option', { value: '' }, err.message));
+      }
+    };
+    day.addEventListener('change', loadTimes);
+    loadTimes();
+    return [
+      h('p', { class: 'sheet-question' }, `Déplacer ce rendez-vous (${durationLabel(booking.duration)}) au :`),
+      h('div', { class: 'field-row sheet-move' },
+        field({ id: 'deplacer-date', label: 'Jour', control: day }),
+        field({ id: 'deplacer-heure', label: 'Heure', control: slot })),
+      go,
+      button('Ne pas déplacer', 'btn--outline', () => ask(null)),
+    ];
+  };
+
   let actions;
-  if (detail.asking === 'cancel') {
+  if (detail.asking === 'move') {
+    actions = moveControls();
+  } else if (detail.asking === 'cancel') {
     actions = [
       h('p', { class: 'sheet-question' }, 'Annuler ce rendez-vous ? Le créneau sera de nouveau proposé en ligne.'),
       button('Oui, annuler', 'btn--danger', () => setStatus('cancelled')),
@@ -905,6 +987,7 @@ function renderDetail({ focus = false } = {}) {
   } else {
     actions = [
       booking.status === 'pending' ? button('Confirmer', '', () => setStatus('confirmed'), 'check') : null,
+      button('Déplacer', 'btn--outline', () => ask('move'), 'move'),
       button('Annuler le rendez-vous', 'btn--danger', () => ask('cancel')),
     ];
   }
@@ -1070,6 +1153,7 @@ async function start() {
   try {
     const session = await api('/api/salon/session');
     codeSource = session.codeSource || codeSource;
+    accountHasUsername = !session.configured || session.username;
     if (!session.configured) showAuth('setup');
     else if (!session.authenticated) showAuth('login');
     else await enter();

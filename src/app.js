@@ -9,6 +9,7 @@ const { createEvents } = require('./events');
 const { createLimiter } = require('./ratelimit');
 const { createStatic, createVersion } = require('./static');
 const { createStats } = require('./stats');
+const { createSettings } = require('./settings');
 const { HttpError, clientIp, isSecure, sameOrigin, readJson, applySecurityHeaders, send, sendJson, sendHtml } = require('./http');
 const views = require('./views');
 
@@ -24,9 +25,12 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
  *   live        : les réglages du direct (src/events.js).
  */
 function createApp({
-  config, store, clock = () => nowInZone(config.timezone),
-  setupCode, timers = true, assetVersion = createVersion(config.publicDir), serveStatic = createStatic(config.publicDir), live = {},
+  config: base, store, clock = () => nowInZone(base.timezone),
+  setupCode, timers = true, assetVersion = createVersion(base.publicDir), serveStatic = createStatic(base.publicDir), live = {},
 }) {
+  // La configuration « vivante » : salon.config.js, plus ce que la coiffeuse a réglé depuis son espace.
+  const settings = createSettings({ base, store });
+  const { config } = settings;
   const bookings = createBookings({ config, store, clock });
   const reminders = createReminders({ config, store, clock });
   const auth = createAuth({ store, setupCode });
@@ -43,7 +47,8 @@ function createApp({
     loginGlobal: createLimiter({ max: 40, windowMs: 15 * 60_000 }),
   };
 
-  const quickest = config.services.reduce((a, b) => (b.duration < a.duration ? b : a));
+  // La prestation la plus courte donne le « prochain créneau » (la carte peut changer : on la relit).
+  const quickestService = () => config.services.reduce((a, b) => (b.duration < a.duration ? b : a));
   const serviceById = id => config.services.find(s => s.id === id);
   const snapshot = () => ({ config, bookings: store.bookings.all(), closures: store.closures.all(), now: clock() });
 
@@ -76,11 +81,11 @@ function createApp({
       asset: file => `${file}?v=${version}`,
       now: state.now,
       status: availability.openStatus(state),
-      next: describeSlot(availability.nextSlot({ ...state, service: quickest }), state.now),
+      next: describeSlot(availability.nextSlot({ ...state, service: quickestService() }), state.now),
       // Congés et fermetures à venir, annoncés dans le bandeau de la une.
       closures: availability.closurePeriods(state),
       // Seule la une affiche l'affichette aux languettes : inutile de calculer ces jours ailleurs.
-      nextDays: pathname === '/' ? availability.nextOpenDays({ ...state, service: quickest }) : [],
+      nextDays: pathname === '/' ? availability.nextOpenDays({ ...state, service: quickestService() }) : [],
       // Rappels par notification : la clé publique du serveur et les échéances proposées.
       push: { key: reminders.publicKey, leads: reminders.leads, labels: reminders.labels },
     };
@@ -117,7 +122,7 @@ function createApp({
 
     if (route === 'GET /api/next-slot') {
       const state = snapshot();
-      return json(200, { slot: describeSlot(availability.nextSlot({ ...state, service: quickest }), state.now) });
+      return json(200, { slot: describeSlot(availability.nextSlot({ ...state, service: quickestService() }), state.now) });
     }
 
     if (route === 'GET /api/availability') {
@@ -167,7 +172,7 @@ function createApp({
     if (route === 'GET /api/salon/session') {
       const configured = auth.isConfigured();
       // Pas encore configuré : où trouver le code de configuration (fenêtre du serveur ou Cloudflare).
-      return json(200, { configured, authenticated: Boolean(auth.readSession(req)), ...(!configured && { codeSource: auth.codeSource }) });
+      return json(200, { configured, authenticated: Boolean(auth.readSession(req)), username: configured && auth.hasUsername(), ...(!configured && { codeSource: auth.codeSource }) });
     }
 
     if (route === 'POST /api/salon/setup' || route === 'POST /api/salon/login') {
@@ -175,8 +180,8 @@ function createApp({
       if (blocked) return tooMany(blocked, `Trop de tentatives. Réessayez dans ${Math.ceil(blocked.retryAfter / 60)} min.`);
       const body = await readJson(req);
       const result = route.endsWith('setup')
-        ? await auth.setup(body.code, body.password)
-        : await auth.login(body.password);
+        ? await auth.setup(body.code, body.password, body.username)
+        : await auth.login(body.username, body.password);
       if (!result.ok) {
         if (result.status === 401 || result.status === 403) {
           limits.login.hit(ip);
@@ -232,7 +237,38 @@ function createApp({
         nowMinutes: now.minutes,
         bookings: store.bookings.all(),
         closures: store.closures.all(),
+        // La carte et les horaires du moment : ils peuvent avoir changé depuis l'ouverture de la page.
+        services: config.services.map(({ id, name, duration, price, priceFrom, category }) => ({ id, name, duration, price, priceFrom, category })),
+        hours: config.hours,
       });
+    }
+
+    // — Réglages : ce que la coiffeuse modifie elle-même —
+
+    if (route === 'GET /api/salon/settings') return json(200, settings.snapshot());
+
+    if (route === 'PUT /api/salon/settings') {
+      const body = await readJson(req, 256 * 1024);
+      const changes = [
+        body.services && (() => settings.setServices(body.services)),
+        body.hours && (() => settings.setHours(body.hours)),
+        body.photos && (() => settings.setPhotos(body.photos)),
+      ].filter(Boolean);
+      if (!changes.length) return json(400, { error: 'Rien à enregistrer.' });
+      for (const change of changes) {
+        const result = change();
+        if (!result.ok) return reject(result);
+      }
+      // Les pages de réservation ouvertes relisent leurs créneaux.
+      events.send('public', 'slots', { date: clock().date });
+      return json(200, settings.snapshot());
+    }
+
+    // Une photo, préparée par le navigateur (réduite, en plusieurs largeurs) puis envoyée ici.
+    if (route === 'POST /api/salon/photos') {
+      const result = settings.addPhoto(await readJson(req, 8 * 1024 * 1024));
+      if (!result.ok) return reject(result);
+      return json(201, { photo: result.photo });
     }
 
     if (route === 'POST /api/salon/bookings') {
@@ -242,9 +278,26 @@ function createApp({
       return json(201, { booking: result.booking });
     }
 
+    // Les créneaux où un rendez-vous peut être déplacé, pour un jour donné.
+    const slotsRoute = /^\/api\/salon\/bookings\/([\w-]{6,40})\/slots$/.exec(pathname);
+    if (slotsRoute && method === 'GET') {
+      const result = bookings.movableSlots(slotsRoute[1], searchParams.get('date'));
+      if (!result.ok) return reject(result);
+      return json(200, { date: searchParams.get('date'), closed: result.closed, slots: result.slots });
+    }
+
     const bookingRoute = /^\/api\/salon\/bookings\/([\w-]{6,40})$/.exec(pathname);
     if (bookingRoute && method === 'PATCH') {
       const body = await readJson(req);
+      // Avec une date et une heure : on déplace le rendez-vous. Sinon : on change son statut.
+      if (body.date || body.time) {
+        const moved = bookings.move(bookingRoute[1], body);
+        if (!moved.ok) return reject(moved);
+        reminders.reschedule(moved.booking);
+        events.send('public', 'slots', { date: moved.from.date });
+        announce('updated', moved.booking);
+        return json(200, { booking: moved.booking });
+      }
       const result = bookings.setStatus(bookingRoute[1], body.status);
       if (!result.ok) return reject(result);
       announce('updated', result.booking);
@@ -317,10 +370,12 @@ function createApp({
     });
   }
 
-  // Date de la dernière mise à jour du contenu : celle du fichier de configuration du salon.
-  const lastModified = config.updated || clock().date;
-
   function sitemap(origin) {
+    // Dernière mise à jour du contenu : le fichier de configuration du salon, ou le dernier réglage
+    // fait depuis l'espace salon s'il est plus récent.
+    const edited = settings.updatedAt().slice(0, 10);
+    const written = config.updated || clock().date;
+    const lastModified = edited > written ? edited : written;
     const urls = views.publicPaths.map(p => `  <url><loc>${origin}${p === '/' ? '/' : p}</loc><lastmod>${lastModified}</lastmod></url>`).join('\n');
     return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
   }
@@ -357,6 +412,12 @@ function createApp({
       }
       const headers = salon ? { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' } : {};
       return sendHtml(req, res, 200, render(siteContext(pathname, req)), headers);
+    }
+    // Une photo déposée depuis l'espace salon : elle vient du stockage du salon, pas de public/.
+    // Son nom ne resservira jamais pour une autre image : le navigateur peut la garder un an.
+    if (pathname.startsWith('/media/')) {
+      const photo = settings.readPhoto(pathname.slice(7));
+      if (photo) return send(req, res, 200, { 'Content-Type': photo.type, 'Cache-Control': 'public, max-age=31536000, immutable' }, photo.bytes);
     }
     if (await serveStatic(req, res, pathname, { versioned: url.searchParams.has('v') })) return undefined;
     return sendHtml(req, res, 404, views.notFound(siteContext(pathname, req)), { 'X-Robots-Tag': 'noindex' });
@@ -429,7 +490,7 @@ function createApp({
     events.close();
   }
 
-  return { handle, close, maintain, auth, events, reminders, stats };
+  return { handle, close, maintain, auth, events, reminders, stats, settings, config };
 }
 
 module.exports = { createApp };

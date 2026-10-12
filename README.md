@@ -55,10 +55,12 @@ En ligne de commande : `node server.js` (ou `npm run open` pour ouvrir aussi le 
 ## Première utilisation de l'espace salon
 
 1. Au premier démarrage, le serveur affiche un **code de configuration** dans sa fenêtre.
-2. Ouvrez `/salon`, saisissez ce code et choisissez le mot de passe de la coiffeuse (10 caractères au minimum).
-3. Le code ne sert qu'une fois. Ensuite, on se connecte avec le mot de passe.
+2. Ouvrez `/salon`, saisissez ce code et choisissez l'identifiant de la coiffeuse (son prénom ou son adresse e-mail, par exemple) et son mot de passe (10 caractères au minimum).
+3. Le code ne sert qu'une fois. Ensuite, on se connecte avec l'identifiant et le mot de passe.
 
-Mot de passe oublié : arrêtez le serveur, lancez `npm run reset-password`, puis redémarrez. Un nouveau code s'affiche. Les rendez-vous ne sont pas touchés.
+Mot de passe ou identifiant oublié : arrêtez le serveur, lancez `npm run reset-password`, puis redémarrez. Un nouveau code s'affiche et permet de choisir un nouvel identifiant et un nouveau mot de passe. Les rendez-vous ne sont pas touchés.
+
+Un compte créé avant l'arrivée des identifiants continue de s'ouvrir avec son seul mot de passe ; pour lui donner un identifiant, refaites cette première connexion.
 
 Site en ligne sur Cloudflare : le code n'est pas affiché, c'est vous qui le choisissez (voir « Mettre le site en ligne sur Cloudflare », étape 3).
 
@@ -78,6 +80,8 @@ Relancez le serveur après chaque modification. Si une valeur est incohérente (
 
 Les photos du salon sont dans `public/photos/` ; leur chemin, leur description (`alt`, lue aux personnes malvoyantes et par Google) et leur format sont dans `salon.config.js` (voir `public/photos/LISEZ-MOI.txt`). Si une photo `nom.webp` est accompagnée de versions réduites `nom-480.webp`, `nom-800.webp`, `nom-1200.webp`, le site les propose toutes au navigateur, qui charge la plus petite qui suffit à l'écran : sur téléphone, la grande photo de la une pèse de 24 à 80 Ko selon l'écran, au lieu de 204.
 
+Cyrille peut aussi ajouter, décrire, ranger et retirer des photos elle-même, depuis l'onglet **Photos** de son espace (voir « Ce que la coiffeuse règle elle-même »).
+
 ## Ce que fait le site
 
 **Pour les clients**
@@ -93,7 +97,7 @@ Les photos du salon sont dans `public/photos/` ; leur chemin, leur description (
 
 - Agenda du jour, liste de tous les rendez-vous avec recherche, chiffres du jour.
 - Les réservations en ligne arrivent en direct, avec un message, un son et une notification si les alertes sont activées (cloche).
-- Confirmer, annuler (le créneau est aussitôt reproposé), rétablir, supprimer.
+- Confirmer, **déplacer** à un autre jour ou une autre heure, annuler (le créneau est aussitôt reproposé), rétablir, supprimer.
 - Noter un rendez-vous pris par téléphone ou au salon.
 - **Fréquentation** : visiteurs, pages vues, réservations en ligne, provenance (Google, Facebook…) et part des téléphones sur 30 jours. Le site compte lui-même, sans cookie ni service extérieur.
 - Fermer un jour, ou une période entière pour des congés (du… au…, avec un motif). La fermeture est annoncée sur le site : dans le bandeau en haut de la une (en fixe quand elle est en cours ou dans les quinze jours), dans « En bref » et sur la page de réservation, avec le jour de réouverture.
@@ -145,11 +149,23 @@ Quand un client appuie sur « Me le rappeler », son navigateur s'abonne aux not
 | Mesure d'audience | Vue « Fréquentation » de l'espace salon |
 | Un seul bouton principal | L'or est réservé à la prise de rendez-vous |
 
+## Ce que la coiffeuse règle elle-même
+
+Trois onglets de l'espace salon remplacent, pour ce qui change souvent, le passage par `salon.config.js` :
+
+- **Tarifs** : le nom, la durée et le prix de chaque prestation (prix unique, « à partir de », ou selon la longueur des cheveux), l'ordre, les catégories, les prestations mises à la une, la note affichée avec les tarifs. Une prestation retirée n'est plus proposée ; les rendez-vous déjà pris gardent leur prix et leur durée.
+- **Horaires** : jours ouverts, heures d'ouverture et de fermeture, pause de midi. Les congés et jours fériés restent dans l'onglet Fermetures.
+- **Photos** : ajouter des photos depuis le téléphone ou l'ordinateur (le navigateur les réduit à 1600 px et en fait plusieurs largeurs avant l'envoi), les décrire, les ranger, choisir les deux photos de la une, en supprimer.
+
+Le site est à jour dès l'enregistrement, sans redémarrage. Le serveur revérifie tout : une durée qui ne tombe pas sur un créneau, des horaires qui se chevauchent ou un fichier qui n'est pas une vraie image sont refusés avec un message clair.
+
+Ces réglages passent avant `salon.config.js` : une fois que Cyrille a enregistré sa carte, ses horaires ou ses photos depuis son espace, modifier les mêmes rubriques dans le fichier n'a plus d'effet. Le reste (nom, adresse, téléphone, règles de réservation, mentions légales) se règle toujours dans le fichier.
+
 ## Données
 
-Les données sont dans `data/` (créé au premier lancement) : `rendez-vous.json`, `fermetures.json`, `compte.json`, `sessions.json` (appareils connectés à l'espace salon), `rappels.json` (abonnements aux notifications et clés du serveur) et `frequentation.json` (compteurs de visites, anonymes). Ce dossier contient des coordonnées de clients : sauvegardez-le, ne le publiez jamais (il est déjà exclu par `.gitignore`). Les rendez-vous de plus d'un an sont effacés automatiquement.
+Les données sont dans `data/` (créé au premier lancement) : `rendez-vous.json`, `fermetures.json`, `compte.json`, `sessions.json` (appareils connectés à l'espace salon), `rappels.json` (abonnements aux notifications et clés du serveur), `frequentation.json` (compteurs de visites, anonymes), `reglages.json` (ce que la coiffeuse a réglé depuis son espace) et le dossier `photos/` (les photos qu'elle a déposées). Ce dossier contient des coordonnées de clients : sauvegardez-le, ne le publiez jamais (il est déjà exclu par `.gitignore`). Les rendez-vous de plus d'un an sont effacés automatiquement.
 
-En ligne sur Cloudflare, les mêmes données sont rangées dans la base du site chez Cloudflare (une ligne par fichier ci-dessus, voir `cloudflare/storage.js`), et non dans le dépôt : un site en ligne et l'ordinateur du salon ont chacun leurs propres rendez-vous.
+En ligne sur Cloudflare, les mêmes données sont rangées dans la base du site chez Cloudflare (une ligne par fichier ci-dessus et une par photo déposée, voir `cloudflare/storage.js`), et non dans le dépôt : un site en ligne et l'ordinateur du salon ont chacun leurs propres rendez-vous.
 
 ## Tests
 
@@ -157,7 +173,7 @@ En ligne sur Cloudflare, les mêmes données sont rangées dans la base du site 
 npm test
 ```
 
-60 tests couvrent le calcul des créneaux, les réservations, l'authentification, la sécurité HTTP, le lancement, les rappels (chiffrement vérifié sur l'exemple de la norme), la liste de contrôle (référencement, liens, images, HTTPS, fichiers privés, fréquentation) et le fonctionnement sur Cloudflare (pages, réservation et direct à travers l'adaptateur, code de configuration, base de données).
+69 tests couvrent le calcul des créneaux, les réservations, l'authentification, la sécurité HTTP, le lancement, les rappels (chiffrement vérifié sur l'exemple de la norme), la liste de contrôle (référencement, liens, images, HTTPS, fichiers privés, fréquentation) les réglages de l'espace salon (tarifs, horaires, photos, déplacement d'un rendez-vous) et le fonctionnement sur Cloudflare (pages, réservation et direct à travers l'adaptateur, code de configuration, base de données, réglages et photos).
 
 ## Mettre le site en ligne sur Cloudflare
 
@@ -180,9 +196,9 @@ Cloudflare vend les noms de domaine à prix coûtant, mais **pas les « .fr »**
 
 ### 3. Le code de la première connexion
 
-Dans le Worker : **Settings** → **Variables and Secrets** → **Add** : type **Secret**, nom `SETUP_CODE`, valeur : un code inventé pour l'occasion, d'au moins 8 lettres ou chiffres (trois mots et un nombre, par exemple). Enregistrer (« Deploy »), puis ouvrir `/salon` : saisir ce code et choisir le mot de passe de la coiffeuse. Le code ne sert qu'une fois.
+Dans le Worker : **Settings** → **Variables and Secrets** → **Add** : type **Secret**, nom `SETUP_CODE`, valeur : un code inventé pour l'occasion, d'au moins 8 lettres ou chiffres (trois mots et un nombre, par exemple). Enregistrer (« Deploy »), puis ouvrir `/salon` : saisir ce code et choisir l'identifiant et le mot de passe de la coiffeuse. Le code ne sert qu'une fois.
 
-**Mot de passe oublié** : remplacer la valeur du secret `SETUP_CODE` par un nouveau code. L'espace salon redemande alors le code, puis un nouveau mot de passe ; les appareils connectés sont déconnectés, les rendez-vous ne sont pas touchés.
+**Mot de passe ou identifiant oublié** : remplacer la valeur du secret `SETUP_CODE` par un nouveau code. L'espace salon redemande alors le code, puis un nouvel identifiant et un nouveau mot de passe ; les appareils connectés sont déconnectés, les rendez-vous ne sont pas touchés.
 
 ### 4. Brancher le nom de domaine
 
@@ -227,10 +243,10 @@ Non inclus pour l'instant : e-mails ou SMS de confirmation, paiement en ligne, p
 | --- | --- |
 | `salon.config.js` | Toutes les informations du salon |
 | `server.js` | Démarrage |
-| `src/` | Serveur : créneaux (`availability.js`), réservations, rappels (`reminders.js`, `push.js`), fréquentation (`stats.js`), authentification, sécurité HTTP, temps réel |
+| `src/` | Serveur : créneaux (`availability.js`), réservations, rappels (`reminders.js`, `push.js`), fréquentation (`stats.js`), réglages de l'espace salon (`settings.js`), authentification, sécurité HTTP, temps réel |
 | `src/views/` | Pages, générées côté serveur |
 | `public/css/` | Styles : `base.css` (papier, typographie, languettes, animations), `pages.css` (les pages du journal), `booking.css`, `salon.css` |
-| `public/js/` | `site.js` (animations du site, avis sur les cookies), `booking.js` (réservation, rappel), `salon.js` (espace salon) |
+| `public/js/` | `site.js` (animations du site, avis sur les cookies), `booking.js` (réservation, rappel), `salon.js` (espace salon) et `salon-reglages.js` (ses onglets Tarifs, Horaires, Photos) |
 | `public/sw.js` | Reçoit et affiche les notifications de rappel |
 | `cloudflare/`, `wrangler.jsonc` | Le site en ligne sur Cloudflare : point d'entrée (`worker.js`), passage de Cloudflare au serveur (`adapter.js`), base de données (`storage.js`), préparation (`build.js`) |
 | `test/` | Tests automatiques |
