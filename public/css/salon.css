@@ -1251,3 +1251,8 @@
 .holidays .view-lead {
   margin-block: .25rem 1rem;
 }
+
+/* Agenda : la reprise d'un rendez-vous après son temps de pose */
+.block--rest {
+  border-style: dashed;
+}

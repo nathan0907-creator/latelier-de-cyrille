@@ -53,11 +53,17 @@ function buildServices(groups, slotStep) {
       if (tiers && (!Array.isArray(tiers) || tiers.length < 2 || tiers.length > 3 || tiers.some(p => typeof p !== 'number' || p < 0))) {
         fail(`les prix de « ${s.id} » sont invalides : indiquez deux ou trois montants.`);
       }
+      // Temps de pose : « pauseAfter » minutes après le début, la coiffeuse est libre « pauseDuration » minutes.
+      const pauseDuration = s.pauseDuration || 0;
+      const pauseAfter = pauseDuration ? s.pauseAfter : 0;
+      if (pauseDuration && (![pauseDuration, pauseAfter].every(m => Number.isInteger(m) && m > 0 && m % slotStep === 0) || pauseAfter + pauseDuration >= s.duration)) {
+        fail(`le temps de pose de « ${s.id} » doit commencer après le début et finir avant la fin de la prestation, par tranches de ${slotStep} minutes.`);
+      }
       const price = tiers ? Math.min(...tiers) : s.price;
       if (typeof price !== 'number' || price < 0) fail(`le prix de « ${s.id} » est invalide.`);
       ids.add(s.id);
       const service = Object.freeze({
-        id: s.id, name: s.name, description: s.description || '', duration: s.duration,
+        id: s.id, name: s.name, description: s.description || '', duration: s.duration, pauseAfter, pauseDuration,
         price, prices: tiers ? Object.freeze([...tiers]) : null,
         priceFrom: Boolean(s.priceFrom || tiers), category: group.category,
       });

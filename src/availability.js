@@ -15,9 +15,24 @@ const lastBookableDate = (config, today) => addDays(today, config.booking.maxDay
 /** Premier jour réservable en ligne : aujourd'hui, ou demain quand on réserve au plus tard la veille. */
 const firstBookableDate = (config, today) => (config.booking.dayBefore ? addDays(today, 1) : today);
 
-function hasConflict(bookings, date, start, duration, ignoreId = null) {
-  return bookings.some(b => b.date === date && isActive(b) && b.id !== ignoreId
-    && start < b.start + b.duration && b.start < start + duration);
+/**
+ * Les moments où un rendez-vous occupe vraiment la coiffeuse. Une prestation avec temps de pose
+ * (une couleur, par exemple) la laisse libre pendant la pose : pauseAfter minutes après le début,
+ * pendant pauseDuration minutes. Elle peut alors prendre quelqu'un d'autre.
+ */
+function busyParts(start, item) {
+  const end = start + item.duration;
+  if (!item.pauseDuration) return [[start, end]];
+  const pause = start + item.pauseAfter;
+  return [[start, pause], [pause + item.pauseDuration, end]];
+}
+
+/** Deux rendez-vous se gênent si la coiffeuse est occupée par les deux au même moment. */
+const clash = (a, b) => a.some(([from, to]) => b.some(([otherFrom, otherTo]) => from < otherTo && otherFrom < to));
+
+function hasConflict(bookings, date, start, item, ignoreId = null) {
+  const wanted = busyParts(start, item);
+  return bookings.some(b => b.date === date && isActive(b) && b.id !== ignoreId && clash(wanted, busyParts(b.start, b)));
 }
 
 /**
@@ -42,8 +57,8 @@ function daySlots({ config, bookings, closures, service, date, now, mode = 'publ
   const slots = [];
   for (const range of ranges) {
     for (let start = range.start; start + service.duration <= range.end; start += config.booking.slotStep) {
-      const free = start >= earliest
-        && !taken.some(b => start < b.start + b.duration && b.start < start + service.duration);
+      const wanted = busyParts(start, service);
+      const free = start >= earliest && !taken.some(b => clash(wanted, busyParts(b.start, b)));
       slots.push({ time: fromMinutes(start), start, available: free });
     }
   }
@@ -142,6 +157,6 @@ function closurePeriods({ config, closures, now, horizon = 90 }) {
 }
 
 module.exports = {
-  isActive, openRanges, firstBookableDate, lastBookableDate, hasConflict, daySlots, monthSummary, nextSlot, nextOpenDays, slotProblem, openStatus,
+  isActive, busyParts, openRanges, firstBookableDate, lastBookableDate, hasConflict, daySlots, monthSummary, nextSlot, nextOpenDays, slotProblem, openStatus,
   closurePeriods,
 };
