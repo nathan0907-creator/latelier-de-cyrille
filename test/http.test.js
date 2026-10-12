@@ -99,7 +99,7 @@ test('espace salon : fermé sans session, configuration, connexion, actions, dé
   for (const [method, path] of [['GET', '/api/salon/data'], ['GET', '/api/salon/events'], ['POST', '/api/salon/bookings'], ['DELETE', '/api/salon/bookings/abcdef123'], ['POST', '/api/salon/closures'], ['POST', '/api/salon/password']]) {
     assert.equal((await site.request(method, path, { body: method === 'GET' ? undefined : {} })).status, 401, `${method} ${path}`);
   }
-  assert.deepEqual((await site.request('GET', '/api/salon/session')).json, { configured: false, authenticated: false });
+  assert.deepEqual((await site.request('GET', '/api/salon/session')).json, { configured: false, authenticated: false, codeSource: 'console' });
 
   assert.equal((await site.request('POST', '/api/salon/login', { body: { password } })).status, 409, 'pas encore configuré');
   assert.equal((await site.request('POST', '/api/salon/setup', { body: { code: 'AAAA-AAAA', password } })).status, 403);

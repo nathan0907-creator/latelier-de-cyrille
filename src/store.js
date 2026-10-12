@@ -26,24 +26,42 @@ function writeJsonAtomic(file, data) {
   }
 }
 
-/** Stockage du salon : rendez-vous, fermetures, rappels et compte de la coiffeuse, dans des fichiers JSON. */
-function createStore(dataDir) {
+/** Le nom de fichier de chaque sorte de données, dans data/. */
+const FILES = {
+  bookings: 'rendez-vous.json',
+  closures: 'fermetures.json',
+  admin: 'compte.json',
+  sessions: 'sessions.json',
+  reminders: 'rappels.json',
+  stats: 'frequentation.json',
+};
+
+/** Les données dans des fichiers JSON, un par sorte de données (sur l'ordinateur du salon). */
+function fileBackend(dataDir) {
   fs.mkdirSync(dataDir, { recursive: true });
-  const files = {
-    bookings: path.join(dataDir, 'rendez-vous.json'),
-    closures: path.join(dataDir, 'fermetures.json'),
-    admin: path.join(dataDir, 'compte.json'),
-    reminders: path.join(dataDir, 'rappels.json'),
-    stats: path.join(dataDir, 'frequentation.json'),
+  const file = key => path.join(dataDir, FILES[key]);
+  return {
+    read: (key, fallback) => readJson(file(key), fallback),
+    write: (key, data) => writeJsonAtomic(file(key), data),
   };
+}
+
+/**
+ * Stockage du salon : rendez-vous, fermetures, rappels, compte et sessions de la coiffeuse.
+ * Tout est gardé en mémoire et enregistré à chaque changement : dans les fichiers de data/
+ * (un dossier donné), ou ailleurs avec un autre « backend » ({ read, write }, voir cloudflare/storage.js).
+ */
+function createStore(target) {
+  const backend = typeof target === 'string' ? fileBackend(target) : target;
   const state = {
-    bookings: readJson(files.bookings, []),
-    closures: readJson(files.closures, []),
-    admin: readJson(files.admin, null),
-    reminders: readJson(files.reminders, { identity: null, list: [] }),
-    stats: readJson(files.stats, {}),
+    bookings: backend.read('bookings', []),
+    closures: backend.read('closures', []),
+    admin: backend.read('admin', null),
+    sessions: backend.read('sessions', {}),
+    reminders: backend.read('reminders', { identity: null, list: [] }),
+    stats: backend.read('stats', {}),
   };
-  const save = key => writeJsonAtomic(files[key], state[key]);
+  const save = key => backend.write(key, state[key]);
 
   return {
     bookings: {
@@ -147,7 +165,21 @@ function createStore(dataDir) {
         save('admin');
       },
     },
+    /** Sessions de l'espace salon, rangées par empreinte du jeton : elles survivent à un redémarrage. */
+    sessions: {
+      get: id => (Object.hasOwn(state.sessions, id) ? state.sessions[id] : null),
+      set(id, session) {
+        state.sessions[id] = session;
+        save('sessions');
+      },
+      removeWhere(predicate) {
+        const ids = Object.keys(state.sessions).filter(id => predicate(id, state.sessions[id]));
+        for (const id of ids) delete state.sessions[id];
+        if (ids.length) save('sessions');
+        return ids.length;
+      },
+    },
   };
 }
 
-module.exports = { createStore };
+module.exports = { createStore, FILES };

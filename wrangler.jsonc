@@ -1,0 +1,37 @@
+// Mise en ligne sur Cloudflare : voir « Mettre le site en ligne sur Cloudflare » dans le README.
+{
+  "name": "latelier-de-cyrille",
+  "main": "cloudflare/worker.js",
+  "compatibility_date": "2026-09-01",
+  // nodejs_compat : le site est écrit pour Node.js ; enable_request_signal : savoir quand une page se ferme.
+  "compatibility_flags": ["nodejs_compat", "enable_request_signal"],
+
+  // Avant chaque envoi : vérifie salon.config.js et prépare ce que le site lit au démarrage.
+  "build": {
+    "command": "node cloudflare/build.js",
+    "watch_dir": ["src", "public", "salon.config.js"]
+  },
+
+  // Styles, scripts et photos : servis par Cloudflare, avec les en-têtes du site (cloudflare/worker.js).
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+
+  // Le salon : rendez-vous, compte de la coiffeuse, rappels, fréquentation.
+  "durable_objects": {
+    "bindings": [{ "name": "SALON", "class_name": "Salon" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Salon"] }],
+
+  // Le nom de domaine du salon, une fois acheté et ajouté à Cloudflare : retirer les « // » au début
+  // des quatre lignes ci-dessous et y mettre le vrai nom, avec et sans « www. ».
+  // "routes": [
+  //   { "pattern": "www.latelier-de-cyrille.fr", "custom_domain": true },
+  //   { "pattern": "latelier-de-cyrille.fr", "custom_domain": true }
+  // ],
+
+  // Journal des erreurs, visible dans le tableau de bord de Cloudflare.
+  "observability": { "enabled": true }
+}

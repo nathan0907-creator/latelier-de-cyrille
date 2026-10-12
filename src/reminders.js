@@ -121,11 +121,29 @@ function createReminders({ config, store, clock, send = sendPush }) {
     return sent;
   }
 
+  /**
+   * Dans combien de minutes un rappel doit partir (0 : maintenant), ou null s'il n'y en a aucun.
+   * En ligne, le site dort entre deux visites : il se fait réveiller à ce moment-là.
+   */
+  function nextDue() {
+    const now = clock();
+    let next = null;
+    for (const reminder of store.reminders.all()) {
+      const booking = store.bookings.get(reminder.bookingId);
+      const remaining = booking ? minutesUntil(booking, now) : 0;
+      // Rendez-vous annulé ou passé (à oublier), envoi à réessayer : tout de suite.
+      const due = !booking || booking.status === 'cancelled' || reminder.failures ? 0
+        : Math.max(0, remaining - Math.max(0, ...reminder.pending));
+      if (next === null || due < next) next = due;
+    }
+    return next;
+  }
+
   return {
     publicKey: identity.publicKey,
     leads,
     labels: leads.map(leadLabel),
-    refFor, subscribe, unsubscribe, tick,
+    refFor, subscribe, unsubscribe, tick, nextDue,
     forget: bookingId => store.reminders.removeWhere(r => r.bookingId === bookingId),
   };
 }

@@ -75,15 +75,21 @@ function contentSecurityPolicy(config, secure) {
   return directives.join('; ');
 }
 
+/** Les en-têtes de sécurité de toutes les réponses du site. */
+function securityHeaders(config, secure) {
+  return {
+    'Content-Security-Policy': contentSecurityPolicy(config, secure),
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    ...(secure && { 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains' }),
+  };
+}
+
 function applySecurityHeaders(req, res, config) {
-  const secure = isSecure(req, config.trustProxy);
-  res.setHeader('Content-Security-Policy', contentSecurityPolicy(config, secure));
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
-  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-  if (secure) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  for (const [name, value] of Object.entries(securityHeaders(config, isSecure(req, config.trustProxy)))) res.setHeader(name, value);
 }
 
 const COMPRESSIBLE = /^(text\/|application\/(json|javascript|xml)|image\/svg)/;
@@ -124,6 +130,6 @@ function sendHtml(req, res, status, html, headers = {}) {
 }
 
 module.exports = {
-  HttpError, clientIp, isSecure, sameOrigin, readJson, applySecurityHeaders,
+  HttpError, clientIp, isSecure, sameOrigin, readJson, securityHeaders, applySecurityHeaders,
   acceptedEncoding, compress, send, sendJson, sendHtml, COMPRESSIBLE,
 };

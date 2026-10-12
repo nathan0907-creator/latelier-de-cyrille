@@ -8,3 +8,8 @@ node_modules/
 
 # Démonstration en ligne, fabriquée par scripts/export-demo.js
 _site/
+
+# Cloudflare : fabriqué à chaque publication (cloudflare/build.js), et fichiers de travail de wrangler
+cloudflare/generated/
+.wrangler/
+.dev.vars
