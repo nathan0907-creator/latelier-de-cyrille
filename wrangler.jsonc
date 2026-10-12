@@ -25,6 +25,9 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Salon"] }],
 
+  // Pas d'adresse de prévisualisation par version : Cloudflare n'en crée pas pour un site à Durable Object.
+  "preview_urls": false,
+
   // Le nom de domaine du salon, une fois acheté et ajouté à Cloudflare : retirer les « // » au début
   // des quatre lignes ci-dessous et y mettre le vrai nom, avec et sans « www. ».
   // "routes": [
