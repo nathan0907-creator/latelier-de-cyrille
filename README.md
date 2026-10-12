@@ -156,7 +156,7 @@ Quand un client appuie sur « Me le rappeler », son navigateur s'abonne aux not
 
 Trois onglets de l'espace salon remplacent, pour ce qui change souvent, le passage par `salon.config.js` :
 
-- **Temps de pose** : une prestation peut avoir un temps de pose (une couleur : la pose commence après 30 min et dure 30 min). Pendant ce temps, la coiffeuse est libre et le créneau est proposé à quelqu'un d'autre ; l'agenda montre le rendez-vous en deux blocs.
+- **Temps de pose** : une prestation peut avoir un ou plusieurs temps de pose (une couleur : la pose commence après 30 min et dure 30 min ; un ombré racine en a deux). Pendant une pose, la coiffeuse est libre et le créneau est proposé à quelqu'un d'autre ; l'agenda montre le rendez-vous en plusieurs blocs.
 - **Tarifs** : le nom, la durée et le prix de chaque prestation (prix unique, « à partir de », ou selon la longueur des cheveux), l'ordre, les catégories, les prestations mises à la une, la note affichée avec les tarifs. Une prestation retirée n'est plus proposée ; les rendez-vous déjà pris gardent leur prix et leur durée.
 - **Horaires** : jours ouverts, heures d'ouverture et de fermeture, pause de midi. Les congés et jours fériés restent dans l'onglet Fermetures.
 - **Photos** : ajouter des photos depuis le téléphone ou l'ordinateur (le navigateur les réduit à 1600 px et en fait plusieurs largeurs avant l'envoi), les décrire, les ranger, choisir les deux photos de la une, en supprimer.
@@ -177,7 +177,7 @@ En ligne sur Cloudflare, les mêmes données sont rangées dans la base du site 
 npm test
 ```
 
-84 tests couvrent le calcul des créneaux, les réservations, l'authentification, la sécurité HTTP, le lancement, les rappels (chiffrement vérifié sur l'exemple de la norme), la liste de contrôle (référencement, liens, images, HTTPS, fichiers privés, fréquentation) les jours fériés, les pages par prestation, la réservation au plus tard la veille, l'annulation par le client et les notifications du salon, les réglages de l'espace salon (tarifs, horaires, photos, déplacement d'un rendez-vous) et le fonctionnement sur Cloudflare (pages, réservation et direct à travers l'adaptateur, code de configuration, base de données, réglages et photos).
+85 tests couvrent le calcul des créneaux, les réservations, l'authentification, la sécurité HTTP, le lancement, les rappels (chiffrement vérifié sur l'exemple de la norme), la liste de contrôle (référencement, liens, images, HTTPS, fichiers privés, fréquentation) les jours fériés, les pages par prestation, la réservation au plus tard la veille, l'annulation par le client et les notifications du salon, les réglages de l'espace salon (tarifs, horaires, photos, déplacement d'un rendez-vous) et le fonctionnement sur Cloudflare (pages, réservation et direct à travers l'adaptateur, code de configuration, base de données, réglages et photos).
 
 ## Mettre le site en ligne sur Cloudflare
 

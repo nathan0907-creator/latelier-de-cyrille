@@ -1028,6 +1028,32 @@
   gap: .6rem;
 }
 
+.editor-pauses {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: .75rem 1.5rem;
+}
+
+.editor-pause {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: .6rem;
+  width: 100%;
+}
+
+.editor-pauses:empty {
+  display: none;
+}
+
+.editor-pauses-hint {
+  margin: 0;
+  padding-bottom: .55rem;
+  font-size: .9rem;
+  color: var(--muted);
+}
+
 .editor-amounts .field {
   width: 6.5rem;
 }
@@ -1091,8 +1117,14 @@
     grid-template-columns: minmax(0, 1.4fr) 7.5rem 12.5rem;
   }
 
-  .editor-tools {
+  .editor-tools,
+  .editor-pauses {
     grid-column: 1 / -1;
+  }
+
+  .editor-pause {
+    grid-template-columns: 11rem 11rem auto;
+    width: auto;
   }
 }
 

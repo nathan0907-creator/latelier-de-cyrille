@@ -15,16 +15,23 @@ const lastBookableDate = (config, today) => addDays(today, config.booking.maxDay
 /** Premier jour réservable en ligne : aujourd'hui, ou demain quand on réserve au plus tard la veille. */
 const firstBookableDate = (config, today) => (config.booking.dayBefore ? addDays(today, 1) : today);
 
+/** Les temps de pose d'une prestation ou d'un rendez-vous (les anciens rendez-vous n'en notaient qu'un). */
+const pausesOf = item => item.pauses || (item.pauseDuration ? [{ after: item.pauseAfter, duration: item.pauseDuration }] : []);
+
 /**
  * Les moments où un rendez-vous occupe vraiment la coiffeuse. Une prestation avec temps de pose
- * (une couleur, par exemple) la laisse libre pendant la pose : pauseAfter minutes après le début,
- * pendant pauseDuration minutes. Elle peut alors prendre quelqu'un d'autre.
+ * (une couleur, par exemple) la laisse libre pendant chaque pose : « after » minutes après le début,
+ * pendant « duration » minutes. Elle peut alors prendre quelqu'un d'autre.
  */
 function busyParts(start, item) {
-  const end = start + item.duration;
-  if (!item.pauseDuration) return [[start, end]];
-  const pause = start + item.pauseAfter;
-  return [[start, pause], [pause + item.pauseDuration, end]];
+  const parts = [];
+  let from = start;
+  for (const pause of pausesOf(item)) {
+    parts.push([from, start + pause.after]);
+    from = start + pause.after + pause.duration;
+  }
+  parts.push([from, start + item.duration]);
+  return parts;
 }
 
 /** Deux rendez-vous se gênent si la coiffeuse est occupée par les deux au même moment. */
@@ -157,6 +164,6 @@ function closurePeriods({ config, closures, now, horizon = 90 }) {
 }
 
 module.exports = {
-  isActive, busyParts, openRanges, firstBookableDate, lastBookableDate, hasConflict, daySlots, monthSummary, nextSlot, nextOpenDays, slotProblem, openStatus,
+  isActive, pausesOf, busyParts, openRanges, firstBookableDate, lastBookableDate, hasConflict, daySlots, monthSummary, nextSlot, nextOpenDays, slotProblem, openStatus,
   closurePeriods,
 };
