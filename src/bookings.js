@@ -97,7 +97,23 @@ function createBookings({ config, store, clock, closures = () => store.closures.
       && hasConflict(store.bookings.all(), booking.date, booking.start, booking.duration, booking.id)) {
       return failure(409, 'Ce créneau a été repris par un autre rendez-vous.', { code: 'slot_taken' });
     }
-    return { ok: true, booking: store.bookings.update(id, { status }) };
+    // Un rendez-vous rétabli n'est plus « annulé par le client ».
+    return { ok: true, previous: booking.status, booking: store.bookings.update(id, { status, cancelledBy: status === 'cancelled' ? 'salon' : '' }) };
+  }
+
+  /**
+   * Le client annule lui-même son rendez-vous (depuis sa page « Votre rendez-vous »). Possible
+   * jusqu'à l'heure du rendez-vous : mieux vaut un créneau libéré tard qu'un rendez-vous manqué.
+   */
+  function cancelByClient(id) {
+    const booking = store.bookings.get(id);
+    if (!booking) return failure(404, 'Rendez-vous introuvable.');
+    if (booking.status === 'cancelled') return failure(409, 'Ce rendez-vous est déjà annulé.', { code: 'already_cancelled' });
+    const now = clock();
+    if (booking.date < now.date || (booking.date === now.date && booking.start <= now.minutes)) {
+      return failure(409, 'Ce rendez-vous est déjà passé.', { code: 'past' });
+    }
+    return { ok: true, booking: store.bookings.update(id, { status: 'cancelled', cancelledBy: 'client', cancelledAt: new Date().toISOString() }) };
   }
 
   /** Les créneaux où ce rendez-vous pourrait être déplacé ce jour-là (lui-même ne se gêne pas). */
@@ -145,9 +161,10 @@ function createBookings({ config, store, clock, closures = () => store.closures.
   const publicView = b => ({
     date: b.date, time: b.time, end: fromMinutes(b.start + b.duration),
     serviceName: b.serviceName, duration: b.duration, price: b.price, priceFrom: Boolean(b.priceFrom), name: b.name,
+    status: b.status,
   });
 
-  return { create, setStatus, move, movableSlots, remove, purgeOld, publicView };
+  return { create, setStatus, cancelByClient, move, movableSlots, remove, purgeOld, publicView };
 }
 
 module.exports = { createBookings, normalizePhone, cleanText };

@@ -4,7 +4,7 @@ const { html } = require('./html');
 const { icon } = require('./icons');
 const { layout } = require('./layout');
 const { PAGES, folio, splitTitle, kicker, priceTable, telHref, closureWording } = require('./components');
-const { lastBookableDate } = require('../availability');
+const { firstBookableDate, lastBookableDate } = require('../availability');
 
 const STEPS = ['La prestation', 'Le créneau', 'Le coupon'];
 const WEEKDAY_LABELS = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
@@ -27,6 +27,8 @@ function booking(site) {
 
   const data = {
     today: now.date,
+    // Premier et dernier jours réservables en ligne (le premier est demain quand on réserve la veille).
+    firstDate: firstBookableDate(config, now.date),
     lastDate: lastBookableDate(config, now.date),
     services: config.services.map(({ id, name, duration, price, priceFrom }) => ({ id, name, duration, price, priceFrom })),
     salon: { name: config.name, address: config.address.full, phone },
@@ -43,6 +45,7 @@ function booking(site) {
       ${kicker('Réservation en ligne')}
       <h1 class="headline headline--xl" data-reveal="lines">${splitTitle(['Prendre', '_rendez-vous_'])}</h1>
       <p class="live-pill" data-reveal><span class="dot" aria-hidden="true"></span>Créneaux à jour en direct</p>
+      <p class="notice-line" data-mine hidden>${icon('calendar')}<span data-mine-text></span><a class="link" data-mine-link>Revoir ou annuler</a></p>
       ${(site.closures || []).slice(0, 1).map(period => {
         const notice = closureWording(period);
         return html`<p class="notice-line" data-reveal>${icon('calendar')}<span>${notice.closed}.${notice.reopening ? ` ${notice.reopening}.` : ''}</span></p>`;
@@ -89,6 +92,7 @@ function booking(site) {
                 <li><span class="legend-dot legend-dot--full" aria-hidden="true"></span>Complet</li>
                 <li><span class="legend-dot legend-dot--closed" aria-hidden="true"></span>Fermé</li>
               </ul>
+              ${config.booking.dayBefore ? html`<p class="calendar-note">En ligne, on réserve au plus tard la veille.</p>` : ''}
             </div>
             <div class="flyer flyer--slots">
               <p class="flyer-kicker">Créneaux libres</p>
@@ -129,6 +133,10 @@ function booking(site) {
               <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
             </div>
             ${warning}
+            <div class="field field--tick" data-notify-field hidden>
+              <label class="tick" for="notify"><input id="notify" name="notify" type="checkbox" checked aria-describedby="notify-hint"><span>Me prévenir par notification sur cet appareil</span></label>
+              <p class="field-hint" id="notify-hint">Quand le salon confirme le rendez-vous, puis en rappel avant de venir.</p>
+            </div>
             <p class="notice notice--error" data-form-error role="alert" hidden></p>
             <div class="panel-actions">
               <button type="button" class="link" data-goto="2">${icon('chevron-left')} Changer de créneau</button>
@@ -147,10 +155,11 @@ function booking(site) {
           ${warning}
           <div class="actions">
             <button type="button" class="btn" data-ics><span>Ajouter à mon agenda</span>${icon('download')}</button>
-            <button type="button" class="btn btn--outline" data-remind aria-pressed="false" hidden><span data-remind-label>Me le rappeler</span>${icon('bell')}</button>
+            <button type="button" class="btn btn--outline" data-remind aria-pressed="false" hidden><span data-remind-label>Me prévenir</span>${icon('bell')}</button>
             <a class="btn btn--outline" href="${config.maps.directions}" target="_blank" rel="noopener"><span>Itinéraire</span>${icon('arrow-up-right')}</a>
           </div>
           <p class="remind-note" data-remind-note role="status" hidden></p>
+          <p class="done-manage" data-manage hidden>${icon('calendar')}<span>Un changement de programme&nbsp;? <a class="link" data-manage-link>Revoir ou annuler ce rendez-vous</a></span></p>
           <a class="link" href="/">${icon('chevron-left')} Revenir à la une</a>
         </section>
       </div>

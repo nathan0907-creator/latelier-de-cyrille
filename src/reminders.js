@@ -5,6 +5,7 @@ const { daysBetween, formatLong, frTime } = require('./time');
 const { generateKeys, readSubscription, sendPush } = require('./push');
 
 const failure = (status, error) => ({ ok: false, status, error });
+const capitalize = text => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** 1440 → « la veille », 120 → « 2 h avant », 45 → « 45 min avant » */
 function leadLabel(minutes) {
@@ -45,12 +46,17 @@ function createReminders({ config, store, clock, send = sendPush }) {
     return { ref: `${booking.id}.${signature(booking.id)}`, when: upcoming(booking, clock()).map(leadLabel) };
   }
 
-  function bookingFor(ref) {
+  /** Le rendez-vous que désigne une référence, quel que soit son état ; null si elle est fausse. */
+  function find(ref) {
     const [id, given = ''] = String(ref || '').split('.');
     const expected = Buffer.from(signature(id || ''));
     const received = Buffer.from(given);
     if (!id || received.length !== expected.length || !crypto.timingSafeEqual(received, expected)) return null;
-    const booking = store.bookings.get(id);
+    return store.bookings.get(id);
+  }
+
+  function bookingFor(ref) {
+    const booking = find(ref);
     return booking && booking.status !== 'cancelled' ? booking : null;
   }
 
@@ -59,8 +65,10 @@ function createReminders({ config, store, clock, send = sendPush }) {
     if (!booking) return failure(404, 'Rendez-vous introuvable.');
     const subscription = readSubscription(input);
     if (!subscription) return failure(400, "Ce navigateur ne permet pas d'activer le rappel.");
+    // Même sans rappel encore possible (rendez-vous tout proche), l'abonnement sert : c'est par lui
+    // que le client apprend que le salon a confirmé, déplacé ou annulé.
     const pending = upcoming(booking, clock());
-    if (!pending.length) return failure(409, 'Ce rendez-vous est trop proche pour programmer un rappel.');
+    if (minutesUntil(booking, clock()) <= 0) return failure(409, 'Ce rendez-vous est déjà passé.');
     const others = store.reminders.all().filter(r => r.bookingId === booking.id && r.endpoint !== subscription.endpoint);
     if (others.length >= 3) return failure(429, 'Le rappel est déjà activé sur plusieurs appareils.');
     store.reminders.put({ bookingId: booking.id, ...subscription, pending, createdAt: new Date().toISOString() });
@@ -74,6 +82,9 @@ function createReminders({ config, store, clock, send = sendPush }) {
     return { ok: true };
   }
 
+  /** L'adresse de la page « Votre rendez-vous » (pour revoir ou annuler), relative au site. */
+  const pageOf = booking => `rendez-vous?r=${booking.id}.${signature(booking.id)}`;
+
   function message(booking, now) {
     const offset = daysBetween(now.date, booking.date);
     const day = offset === 0 ? "aujourd'hui" : offset === 1 ? 'demain' : formatLong(booking.date);
@@ -81,9 +92,38 @@ function createReminders({ config, store, clock, send = sendPush }) {
     return {
       title: `Rendez-vous ${day} à ${frTime(booking.start)}`,
       body: `${booking.serviceName} · ${place}.${config.contact.phone ? ` Un empêchement ? ${config.contact.phone}` : ''}`,
-      url: 'nous-trouver',
+      url: pageOf(booking),
       tag: `rendez-vous-${booking.id}`,
     };
+  }
+
+  /** Ce que le salon vient de décider pour un rendez-vous, dit au client. */
+  const NEWS = {
+    confirmed: booking => ({ title: 'Rendez-vous confirmé', body: `${capitalize(formatLong(booking.date))} à ${frTime(booking.start)} · ${booking.serviceName} · ${config.name}` }),
+    moved: booking => ({ title: 'Rendez-vous déplacé', body: `Nouveau rendez-vous : ${formatLong(booking.date)} à ${frTime(booking.start)} · ${booking.serviceName} · ${config.name}` }),
+    cancelled: booking => ({
+      title: 'Rendez-vous annulé',
+      body: `Le salon a dû annuler votre rendez-vous du ${formatLong(booking.date)} à ${frTime(booking.start)}.${config.contact.phone ? ` Pour en reprendre un : ${config.contact.phone}` : ''}`,
+    }),
+  };
+
+  /**
+   * Prévient le client, sur les appareils où il a activé les notifications, que le salon a confirmé,
+   * déplacé ou annulé son rendez-vous. Renvoie le nombre de notifications parties.
+   */
+  async function notify(booking, kind) {
+    let sent = 0;
+    for (const reminder of store.reminders.all().filter(r => r.bookingId === booking.id)) {
+      let result;
+      try {
+        result = await send(reminder, { ...NEWS[kind](booking), url: pageOf(booking), tag: `rendez-vous-${booking.id}` }, { keys: identity, subject, ttl: 24 * 3600 });
+      } catch {
+        result = { ok: false };
+      }
+      if (result.ok) sent += 1;
+      if (result.gone) store.reminders.removeWhere(r => r === reminder);
+    }
+    return sent;
   }
 
   /** Envoie les rappels arrivés à échéance et oublie ceux qui n'ont plus lieu d'être. */
@@ -143,7 +183,7 @@ function createReminders({ config, store, clock, send = sendPush }) {
     publicKey: identity.publicKey,
     leads,
     labels: leads.map(leadLabel),
-    refFor, subscribe, unsubscribe, tick, nextDue,
+    refFor, find, pageOf, subscribe, unsubscribe, notify, tick, nextDue,
     forget: bookingId => store.reminders.removeWhere(r => r.bookingId === bookingId),
     /** Après un déplacement : les rappels repartent des échéances de la nouvelle date. */
     reschedule(booking) {

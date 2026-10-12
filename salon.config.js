@@ -74,6 +74,9 @@ module.exports = {
   booking: {
     slotStep: 30,          // un créneau toutes les 30 minutes
     minNoticeMinutes: 120, // on ne réserve pas en ligne moins de 2 h à l'avance
+    // En ligne, on réserve au plus tard la veille : aucun rendez-vous pour le jour même.
+    // (Cyrille peut toujours en noter un le jour même depuis son espace.)
+    dayBefore: true,
     // Jusqu'à quand on peut réserver : ce nombre de jours à partir d'aujourd'hui. Le calendrier
     // avance tout seul chaque jour. 730 = deux ans ; mettez 90 pour trois mois, 365 pour un an.
     maxDaysAhead: 730,
