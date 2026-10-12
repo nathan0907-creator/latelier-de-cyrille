@@ -5,7 +5,7 @@ const { icon } = require('./icons');
 const { layout } = require('./layout');
 const {
   PAGES, folio, picture, button, buttonLabel, splitTitle, kicker, stamp, openBadge, hoursTable,
-  priceTable, telHref, ratioClass, fullSize, houseRules,
+  priceTable, telHref, ratioClass, fullSize, houseRules, euros, priceLabel, durationLabel,
 } = require('./components');
 
 const pageOf = path => PAGES.find(page => page.path === path);
@@ -51,6 +51,68 @@ function services(site) {
     crumb: 'Prestations et tarifs',
     catalog: true,
     description: `Les prestations et les tarifs de ${config.name} : coupes, brushings, colorations, balayages, soins. Uniquement sur rendez-vous, réservation en ligne.`,
+    body,
+    styles: ['/css/pages.css'],
+  });
+}
+
+// ── La page d'une prestation ───────────────────────────────────────────────
+// « Balayage à Loison-sous-Lens » : son tarif, sa durée, le bouton pour réserver. Une adresse par
+// prestation, c'est une chance de plus d'être trouvé par qui cherche cette prestation dans le coin.
+
+function service(site, item) {
+  const { config } = site;
+  const { city } = config.address;
+  const others = (config.categories.find(category => category.items.some(other => other.id === item.id))?.items || []).filter(other => other.id !== item.id);
+  const amounts = item.prices || [item.price];
+  const price = item.prices && item.prices.length === 3
+    ? `de ${euros(Math.min(...amounts))} à ${euros(Math.max(...amounts))} selon la longueur`
+    : item.prices ? item.prices.map(euros).join(' ou ') : priceLabel(item);
+  const body = html`
+<main id="contenu" class="page">
+  ${pageHead(site, {
+    path: '/prestations',
+    kick: `${item.category} · ${config.trade} à ${city}`,
+    title: [item.name, `_à ${city}_`],
+  })}
+  <div class="container menu">
+    <section class="menu-group" aria-labelledby="tarif-titre">
+      <h2 class="menu-group-title" id="tarif-titre" data-reveal>Le tarif</h2>
+      ${priceTable([item], `${item.name} : tarif`, { link: false })}
+      <dl class="info-list service-facts" data-reveal>
+        <div><dt>Durée</dt><dd>${durationLabel(item.duration)}</dd></div>
+        <div><dt>Adresse</dt><dd>${config.address.full}</dd></div>
+        ${config.contact.phone ? html`<div><dt>Téléphone</dt><dd><a class="link" href="${telHref(config.contact.phone)}">${config.contact.phone}</a></dd></div>` : ''}
+      </dl>
+      ${config.priceNote ? html`<p class="notice-line" data-reveal>${icon('info')}<span>${config.priceNote}</span></p>` : ''}
+      <p class="actions" data-reveal>${button('Prendre rendez-vous', `/reservation?service=${item.id}`, { variant: 'btn--accent' })}</p>
+    </section>
+    ${others.length ? html`<section class="menu-group" aria-labelledby="autres-titre">
+      <h2 class="menu-group-title" id="autres-titre" data-reveal>${item.category} : les autres prestations</h2>
+      ${priceTable(others, `${item.category} : autres prestations`)}
+    </section>` : ''}
+    <p class="section-foot" data-reveal>${button('Toute la carte', '/prestations', { variant: 'btn--outline' })}</p>
+  </div>
+  <div class="container">${houseRules(config)}</div>
+</main>`;
+
+  return layout(site, {
+    title: `${item.name} à ${city}`,
+    crumb: item.name,
+    trail: [{ name: 'Prestations et tarifs', path: '/prestations' }],
+    description: `${item.name} à ${city} chez ${config.name} : ${price}, ${durationLabel(item.duration)}. ${config.booking.appointmentOnly || 'Sur rendez-vous'}, réservation en ligne.`,
+    schema: ({ at, salon }) => [{
+      '@type': 'Service',
+      '@id': at(`${site.path}#prestation`),
+      name: item.name,
+      serviceType: item.category,
+      url: at(site.path),
+      provider: { '@id': salon },
+      areaServed: [city, ...config.seo.nearby].map(name => ({ '@type': 'City', name })),
+      offers: amounts.length > 1
+        ? { '@type': 'AggregateOffer', priceCurrency: 'EUR', lowPrice: Math.min(...amounts), highPrice: Math.max(...amounts), offerCount: amounts.length }
+        : { '@type': 'Offer', priceCurrency: 'EUR', price: item.price },
+    }],
     body,
     styles: ['/css/pages.css'],
   });
@@ -131,6 +193,10 @@ function find(site) {
         ${contact.messenger || contact.facebook ? html`<div>
           <dt>Sur Facebook</dt>
           <dd>${contact.messenger ? html`<a class="link" href="${contact.messenger}" target="_blank" rel="noopener">Écrire sur Messenger</a>` : ''}${contact.messenger && contact.facebook ? html`<br>` : ''}${contact.facebook ? html`<a class="link" href="${contact.facebook}" target="_blank" rel="noopener">La page du salon</a>` : ''}</dd>
+        </div>` : ''}
+        ${contact.google ? html`<div>
+          <dt>Sur Google</dt>
+          <dd><a class="link" href="${contact.google}" target="_blank" rel="noopener">La fiche du salon et les avis</a></dd>
         </div>` : ''}
         ${config.booking.appointmentOnly ? html`<div>
           <dt>Accueil</dt>
@@ -374,4 +440,4 @@ function notFound(site) {
   return layout(site, { title: 'Page introuvable', body, styles: ['/css/pages.css'], noindex: true });
 }
 
-module.exports = { services, gallery, find, legal, privacy, terms, notFound };
+module.exports = { services, service, gallery, find, legal, privacy, terms, notFound };

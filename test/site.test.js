@@ -76,7 +76,8 @@ test('référencement : données structurées du salon, plan du site, robots.txt
   const sitemap = await site.request('GET', '/sitemap.xml');
   assert.match(sitemap.headers['content-type'], /application\/xml/);
   const listed = [...sitemap.text.matchAll(/<loc>([^<]+)<\/loc><lastmod>\d{4}-\d{2}-\d{2}<\/lastmod>/g)].map(m => m[1].replace(site.origin, ''));
-  assert.deepEqual(listed, ['/', '/prestations', '/galerie', '/nous-trouver', '/reservation']);
+  assert.deepEqual(listed, ['/', '/prestations', '/galerie', '/nous-trouver', '/reservation', '/prestations/court', '/prestations/moyen', '/prestations/long'],
+    'les pages du journal, puis une page par prestation');
 
   // L'espace de la coiffeuse et les pages introuvables restent hors des moteurs de recherche.
   const salonPage = await site.request('GET', '/salon');
@@ -261,6 +262,21 @@ test('rappels : la réservation donne sa référence ; le serveur refuse les abo
   const removed = await send({ ref: created.json.reminder.ref, endpoint: 'https://fcm.googleapis.com/fcm/send/a' }, 'DELETE');
   assert.equal(removed.status, 200);
   assert.equal(site.store.reminders.all().length, 0);
+});
+
+test('fiche Google : liée depuis le site et signalée aux moteurs de recherche, quand elle est renseignée', async t => {
+  const without = await startSite();
+  t.after(without.stop);
+  assert.doesNotMatch((await without.request('GET', '/nous-trouver')).text, /Avis Google|Sur Google/);
+
+  const google = 'https://maps.app.goo.gl/exemple';
+  const site = await startSite({ overrides: { contact: { phone: '01 99 00 00 00', google } } });
+  t.after(site.stop);
+  const page = (await site.request('GET', '/nous-trouver')).text;
+  assert.match(page, new RegExp(`<a class="link" href="${google}" target="_blank" rel="noopener">Avis Google</a>`));
+  assert.match(page, /<dt>Sur Google<\/dt>/);
+  const [salon] = JSON.parse(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(page)[1])['@graph'];
+  assert.deepEqual(salon.sameAs, [google]);
 });
 
 test('règles du salon : affichées quand elles sont renseignées, absentes sinon', async t => {

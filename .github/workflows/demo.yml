@@ -1,6 +1,7 @@
-# Met en ligne la démonstration du site sur GitHub Pages.
-# Elle est refaite à chaque modification, et chaque nuit pour que la date du jour,
-# le prochain créneau et les jours proposés restent justes.
+# Tient à jour l'adresse de démonstration du site sur GitHub Pages.
+# Le vrai site est en ligne : chaque page de la démonstration renvoie à la même page du vrai site
+# (« --live », ci-dessous). Sans cette adresse, la démonstration redevient une copie « pour de
+# faux », refaite à chaque modification et chaque nuit.
 name: Démonstration en ligne
 
 on:
@@ -31,7 +32,8 @@ jobs:
         with:
           node-version: 22
       - name: Fabriquer la démonstration
-        run: node scripts/export-demo.js _site --base=/${{ github.event.repository.name }} --origin=https://${{ github.repository_owner }}.github.io
+        # --live : l'adresse du vrai site. À remplacer par le nom de domaine quand il sera branché.
+        run: node scripts/export-demo.js _site --base=/${{ github.event.repository.name }} --origin=https://${{ github.repository_owner }}.github.io --live=https://latelier-de-cyrille.plantefevenathan.workers.dev
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

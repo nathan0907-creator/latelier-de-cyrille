@@ -19,6 +19,7 @@ const state = {
   nowMinutes: 0,
   bookings: [],
   closures: [],
+  holidays: { auto: true, list: [] }, // jours fériés à venir, fermés d'office sauf ceux qu'elle ouvre
   tab: 'day',
   day: '',
   filter: 'upcoming',
@@ -46,6 +47,14 @@ const telHref = phone => `tel:${phone.replace(/[^\d+]/g, '')}`;
 const hoursLabel = booking => `${frTime(booking.start)} – ${frTime(booking.start + booking.duration)}`;
 const whenLabel = booking => `${capitalize(formatLong(booking.date))} à ${frTime(booking.start)}`;
 const plural = (count, one, many) => `${count} ${count > 1 ? many : one}`;
+
+/** La fermeture d'un jour : saisie par la coiffeuse (congés…), ou jour férié fermé d'office. */
+function closureOn(date) {
+  const saved = state.closures.find(c => c.date === date);
+  if (saved) return saved;
+  const holiday = state.holidays.list.find(day => day.date === date && !day.open);
+  return holiday ? { date, reason: `jour férié (${holiday.name})` } : null;
+}
 
 const STATUS = { pending: 'À confirmer', confirmed: 'Confirmé', cancelled: 'Annulé' };
 const statusBadge = booking => h('span', { class: `badge badge--${booking.status}` }, STATUS[booking.status]);
@@ -283,6 +292,7 @@ async function loadData() {
   state.nowMinutes = data.nowMinutes;
   state.bookings = data.bookings;
   state.closures = data.closures;
+  state.holidays = data.holidays || state.holidays;
   // La carte et les horaires peuvent avoir été modifiés depuis l'ouverture de la page.
   config.services = data.services;
   config.hours = data.hours;
@@ -352,7 +362,9 @@ function connect() {
   });
 
   source.addEventListener('closures', event => {
-    state.closures = JSON.parse(event.data).closures;
+    const data = JSON.parse(event.data);
+    state.closures = data.closures;
+    state.holidays = data.holidays || state.holidays;
     refresh();
   });
 
@@ -505,7 +517,7 @@ function renderDay() {
   refs.todayButton.disabled = date === state.today;
   refs.dayPicker.value = date;
 
-  const closure = state.closures.find(c => c.date === date);
+  const closure = closureOn(date);
   const ranges = closure ? [] : config.hours[weekday(date)];
   const all = bookingsOn(date);
   const active = all.filter(isActive);
@@ -714,11 +726,61 @@ function mountClosures() {
   });
 
   refs.closureList = h('div', {});
+  refs.holidayList = h('section', { class: 'holidays', 'aria-labelledby': 'feries-titre' });
   refs.view.replaceChildren(
     h('p', { class: 'view-lead' }, "Pour des congés, indiquez le premier et le dernier jour : la fermeture est annoncée dans le bandeau du site et ces jours ne sont plus proposés à la réservation. Les rendez-vous déjà pris restent enregistrés : pensez à prévenir les clients concernés."),
     form,
-    refs.closureList);
+    refs.closureList,
+    refs.holidayList);
   renderClosures();
+}
+
+/**
+ * Jours fériés : le salon est fermé ces jours-là sans rien avoir à saisir. La coiffeuse peut en
+ * ouvrir un (elle travaille ce jour-là), ou arrêter la fermeture automatique.
+ */
+function renderHolidays() {
+  const { auto, list } = state.holidays;
+  const change = async (body, message) => {
+    try {
+      const { holidays } = await call('/api/salon/holidays', { method: 'PUT', body });
+      state.holidays = holidays;
+      refresh();
+      toast(message);
+    } catch (err) {
+      toast(err.message, { type: 'error' });
+    }
+  };
+  const toggle = h('input', {
+    type: 'checkbox', id: 'feries-auto', checked: auto,
+    onchange: event => change({ auto: event.target.checked }, event.target.checked
+      ? 'Le salon est fermé les jours fériés. C\'est annoncé sur le site.'
+      : 'Les jours fériés sont ouverts comme les autres jours.'),
+  });
+  refs.holidayList.replaceChildren(
+    h('h2', { class: 'group-title', id: 'feries-titre' }, 'Jours fériés'),
+    h('label', { class: 'check', for: 'feries-auto' }, toggle, h('span', {}, 'Fermer le salon les jours fériés')),
+    h('p', { class: 'view-lead' }, auto
+      ? "Ces jours-là sont fermés d'office et annoncés sur le site, sans rien avoir à saisir. Vous travaillez l'un d'eux ? Ouvrez-le : il sera proposé à la réservation, à vos horaires habituels."
+      : 'La fermeture automatique est arrêtée : les jours fériés sont ouverts à vos horaires habituels. Pour en fermer un, saisissez-le dans le formulaire ci-dessus.'),
+    ...list.map(day => {
+      const affected = day.open ? 0 : bookingsOn(day.date).filter(isActive).length;
+      return h('article', { class: 'row row--closure' },
+        h('div', { class: 'row-time' }, h('strong', {}, capitalize(formatShort(day.date))), h('span', {}, day.date.slice(0, 4))),
+        h('div', { class: 'row-main' },
+          h('p', { class: 'row-name' }, h('span', {}, day.name),
+            h('span', { class: `badge ${day.open ? 'badge--confirmed' : 'badge--neutral'}` }, day.open ? 'Ouvert' : 'Fermé'),
+            affected ? h('span', { class: 'badge badge--pending' }, `${plural(affected, 'rendez-vous', 'rendez-vous')} à déplacer`) : null)),
+        auto ? h('div', { class: 'row-actions' },
+          h('button', {
+            type: 'button', class: 'btn btn--small btn--outline',
+            'aria-label': day.open ? `Refermer le ${formatLong(day.date)}` : `Ouvrir le ${formatLong(day.date)}`,
+            onclick: () => change({ date: day.date, open: !day.open }, day.open
+              ? `Le salon sera fermé le ${formatLong(day.date)} (${day.name}).`
+              : `Le salon sera ouvert le ${formatLong(day.date)} (${day.name}).`),
+          }, h('span', {}, day.open ? 'Refermer' : 'Ouvrir ce jour-là'))) : null);
+    }),
+    list.length ? null : h('p', { class: 'empty' }, 'Aucun jour férié ne tombe un jour travaillé dans les douze mois à venir.'));
 }
 
 /** « le mardi 20 octobre » ou « du mardi 20 octobre au samedi 31 octobre » */
@@ -751,6 +813,7 @@ function closurePeriods(list) {
 }
 
 function renderClosures() {
+  renderHolidays();
   const periods = closurePeriods(state.closures.filter(c => c.date >= state.today));
   if (!periods.length) {
     refs.closureList.replaceChildren(h('p', { class: 'empty' }, 'Aucune fermeture prévue.'));

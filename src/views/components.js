@@ -211,8 +211,9 @@ function ticker(items, label = 'Dernière minute') {
  * Tableau de tarifs : la prestation à gauche, les prix à droite, une colonne par longueur
  * de cheveux. Une prestation à tarif unique occupe les trois colonnes ; la dernière case
  * mène à la réservation de cette prestation — ou, avec pick, la choisit (page de réservation).
+ * Le nom de chaque prestation mène à sa page (sauf avec pick, ou link: false sur cette page même).
  */
-function priceTable(services, caption, { pick = false } = {}) {
+function priceTable(services, caption, { pick = false, link = !pick } = {}) {
   const byLength = services.some(service => service.prices && service.prices.length === 3);
   return html`<table class="prices ${pick ? 'prices--pick' : ''}">
     <caption class="sr-only">${caption}</caption>
@@ -227,7 +228,7 @@ function priceTable(services, caption, { pick = false } = {}) {
     </thead>
     <tbody data-stagger>
       ${services.map(service => html`<tr data-reveal>
-        <th scope="row">${service.name}</th>
+        <th scope="row">${link ? html`<a class="prices-name" href="/prestations/${service.id}">${service.name}</a>` : service.name}</th>
         ${service.prices && service.prices.length === 3
           ? service.prices.map(price => html`<td>${euros(price)}</td>`)
           : html`<td colspan="3" class="prices-single">${service.prices ? service.prices.map(euros).join(' / ') : priceLabel(service)}</td>`}

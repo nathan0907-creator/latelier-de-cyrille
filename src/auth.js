@@ -6,7 +6,11 @@ const { promisify } = require('node:util');
 const scrypt = promisify(crypto.scrypt);
 
 const SCRYPT = { N: 32768, r: 8, p: 1, keylen: 64 };
-const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// Une fois connectée, la coiffeuse le reste sur cet appareil : la session vaut 400 jours (le plus
+// long qu'un navigateur accepte de garder un cookie) et se prolonge d'elle-même à chaque visite.
+const SESSION_TTL_MS = 400 * 24 * 60 * 60 * 1000;
+// On ne réécrit pas la session à chaque clic : au plus une fois par jour.
+const SESSION_RENEW_MS = 24 * 60 * 60 * 1000;
 const COOKIE_NAME = 'salon_session';
 // Sans I, L, O, 0 ni 1 : le code se recopie sans erreur depuis la console.
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -87,7 +91,8 @@ const MIN_SECRET_CODE = 8;
  *   le remplacer par un nouveau code permet de choisir un nouveau mot de passe (mot de passe oublié).
  * - Le mot de passe est haché avec scrypt ; seul le hachage est enregistré.
  * - Les sessions sont enregistrées sous le SHA-256 d'un jeton aléatoire : le jeton lui-même ne
- *   se trouve que dans le cookie du navigateur.
+ *   se trouve que dans le cookie du navigateur. Une session dure tant que l'appareil revient
+ *   (elle se prolonge à chaque visite) ; se déconnecter ou changer de mot de passe y met fin.
  */
 function createAuth({ store, now = Date.now, setupCode: secret }) {
   // Sans secret (ordinateur du salon), le code est tiré au sort. Un secret trop court ne sert pas.
@@ -173,7 +178,18 @@ function createAuth({ store, now = Date.now, setupCode: secret }) {
       forget(id);
       return null;
     }
-    return { id };
+    return { id, token };
+  }
+
+  /**
+   * Prolonge une session en cours d'utilisation. Renvoie le cookie à renvoyer au navigateur (le même
+   * jeton, pour 400 jours de plus), ou null si elle a déjà été prolongée dans la journée.
+   */
+  function renewSession(session, secure) {
+    const saved = session && store.sessions.get(session.id);
+    if (!saved || saved.expires - now() > SESSION_TTL_MS - SESSION_RENEW_MS) return null;
+    store.sessions.set(session.id, { ...saved, expires: now() + SESSION_TTL_MS });
+    return cookie(session.token, secure);
   }
 
   function cookie(token, secure) {
@@ -195,6 +211,7 @@ function createAuth({ store, now = Date.now, setupCode: secret }) {
     changePassword,
     createSession,
     readSession,
+    renewSession,
     destroySession: forget,
     destroyOtherSessions(keepId) {
       store.sessions.removeWhere(id => id !== keepId);

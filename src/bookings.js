@@ -25,7 +25,8 @@ function normalizePhone(raw) {
 
 const failure = (status, error, extra = {}) => ({ ok: false, status, error, ...extra });
 
-function createBookings({ config, store, clock }) {
+/** closures : donne tous les jours fermés (fermetures saisies et jours fériés, voir src/holidays.js). */
+function createBookings({ config, store, clock, closures = () => store.closures.all() }) {
   /**
    * Crée un rendez-vous. mode « public » : réservation en ligne (téléphone obligatoire,
    * délai minimum, limite par numéro). mode « salon » : saisi par la coiffeuse.
@@ -51,7 +52,7 @@ function createBookings({ config, store, clock }) {
 
     const now = clock();
     const problem = slotProblem({
-      config, bookings: store.bookings.all(), closures: store.closures.all(),
+      config, bookings: store.bookings.all(), closures: closures(),
       service, date: input.date, start, now, mode,
     });
     if (problem === 'taken') {
@@ -105,7 +106,7 @@ function createBookings({ config, store, clock }) {
     if (!booking) return failure(404, 'Rendez-vous introuvable.');
     if (!isValidDate(date)) return failure(400, 'Date invalide.');
     const day = daySlots({
-      config, bookings: store.bookings.all().filter(b => b.id !== id), closures: store.closures.all(),
+      config, bookings: store.bookings.all().filter(b => b.id !== id), closures: closures(),
       service: { duration: booking.duration }, date, now: clock(), mode: 'salon',
     });
     return { ok: true, closed: day.closed, slots: day.slots.map(({ time, available }) => ({ time, available })) };
@@ -120,7 +121,7 @@ function createBookings({ config, store, clock }) {
     if (start === null) return failure(400, 'Horaire invalide.');
     if (date < clock().date) return failure(400, 'Choisissez une date à venir.');
     const problem = slotProblem({
-      config, bookings: store.bookings.all().filter(b => b.id !== id), closures: store.closures.all(),
+      config, bookings: store.bookings.all().filter(b => b.id !== id), closures: closures(),
       service: { duration: booking.duration }, date, start, now: clock(), mode: 'salon',
     });
     if (problem === 'taken') return failure(409, 'Ce créneau est déjà pris par un autre rendez-vous.', { code: 'slot_taken' });

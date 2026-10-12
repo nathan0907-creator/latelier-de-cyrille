@@ -41,6 +41,9 @@ module.exports = {
     facebook: 'https://www.facebook.com/latelierby',
     messenger: 'https://www.facebook.com/messages/t/latelierby/',
     instagram: '',
+    // La fiche Google du salon : dans Google Maps, ouvrir la fiche, « Partager », « Copier le lien ».
+    // Le site y renvoie (avis, itinéraire) et la signale aux moteurs de recherche.
+    google: '',
   },
 
   // Adresse (sert aussi à Google Maps)
@@ -160,7 +163,7 @@ module.exports = {
   legal: {
     company: "L'atelier de Cyrille",
     status: '[forme juridique à compléter]',
-    siret: '[SIRET à compléter]',
+    siret: '844 660 209 00033',
     publisher: 'Cyrille [nom à compléter]',
     // Cloudflare (voir « Mettre le site en ligne sur Cloudflare » dans le README).
     host: 'Cloudflare, Inc., 101 Townsend St, San Francisco, CA 94107, États-Unis · +1 650 319 8930 · cloudflare.com',

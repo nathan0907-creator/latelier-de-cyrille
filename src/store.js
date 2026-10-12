@@ -35,6 +35,7 @@ const FILES = {
   reminders: 'rappels.json',
   stats: 'frequentation.json',
   settings: 'reglages.json',
+  holidays: 'jours-feries.json',
 };
 
 /** Le dossier des photos déposées depuis l'espace salon, dans data/. */
@@ -87,6 +88,7 @@ function createStore(target) {
     reminders: backend.read('reminders', { identity: null, list: [] }),
     stats: backend.read('stats', {}),
     settings: backend.read('settings', null),
+    holidays: backend.read('holidays', null),
   };
   const save = key => backend.write(key, state[key]);
 
@@ -191,6 +193,14 @@ function createStore(target) {
       set(record) {
         state.settings = record;
         save('settings');
+      },
+    },
+    /** Jours fériés : fermeture automatique ou non, et ceux que la coiffeuse a choisi d'ouvrir. */
+    holidays: {
+      get: () => state.holidays,
+      set(record) {
+        state.holidays = record;
+        save('holidays');
       },
     },
     /** Photos déposées depuis l'espace salon : lues à la demande, jamais gardées en mémoire. */

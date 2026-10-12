@@ -25,7 +25,7 @@ const internationalPhone = phone => {
  * téléphone, réservation), sa carte de prestations sur les pages qui la montrent, et le fil
  * d'Ariane des pages intérieures.
  */
-function structuredData(site, { catalog = false, crumb = '' } = {}) {
+function structuredData(site, { catalog = false, crumb = '', trail = [], schema = null } = {}) {
   const { config, origin, path } = site;
   const at = target => `${origin}${target}`;
   const prices = config.services.flatMap(service => service.prices || [service.price]);
@@ -59,7 +59,19 @@ function structuredData(site, { catalog = false, crumb = '' } = {}) {
         opens: fromMinutes(range.start),
         closes: fromMinutes(range.end),
       }))),
-    ...((config.contact.facebook || config.contact.instagram) && { sameAs: [config.contact.facebook, config.contact.instagram].filter(Boolean) }),
+    // Les autres pages du salon (Facebook, fiche Google…) : les moteurs de recherche font le lien.
+    ...((config.contact.facebook || config.contact.instagram || config.contact.google) && { sameAs: [config.contact.facebook, config.contact.instagram, config.contact.google].filter(Boolean) }),
+    // Congés, jours fériés : les jours de fermeture à venir, pour que les horaires affichés par les
+    // moteurs de recherche soient justes ces jours-là (ouverture et fermeture à minuit = fermé).
+    ...((site.closures || []).length && {
+      specialOpeningHoursSpecification: site.closures.map(period => ({
+        '@type': 'OpeningHoursSpecification',
+        validFrom: period.from,
+        validThrough: period.to,
+        opens: '00:00',
+        closes: '00:00',
+      })),
+    }),
     potentialAction: {
       '@type': 'ReserveAction',
       name: 'Prendre rendez-vous',
@@ -90,12 +102,11 @@ function structuredData(site, { catalog = false, crumb = '' } = {}) {
   } else if (crumb) {
     graph.push({
       '@type': 'BreadcrumbList',
-      itemListElement: [
-        { '@type': 'ListItem', position: 1, name: config.name, item: at('/') },
-        { '@type': 'ListItem', position: 2, name: crumb, item: at(path) },
-      ],
+      itemListElement: [{ name: config.name, path: '/' }, ...trail, { name: crumb, path }]
+        .map((step, i) => ({ '@type': 'ListItem', position: i + 1, name: step.name, item: at(step.path) })),
     });
   }
+  if (schema) graph.push(...schema({ at, salon: salon['@id'] }));
   return { '@context': 'https://schema.org', '@graph': graph };
 }
 
@@ -215,6 +226,7 @@ function footer(site) {
             ${config.contact.messenger ? html`<li><a class="link" href="${config.contact.messenger}" target="_blank" rel="noopener">Messenger</a></li>` : ''}
             ${config.contact.facebook ? html`<li><a class="link" href="${config.contact.facebook}" target="_blank" rel="noopener">Facebook</a></li>` : ''}
             ${config.contact.instagram ? html`<li><a class="link" href="${config.contact.instagram}" target="_blank" rel="noopener">Instagram</a></li>` : ''}
+            ${config.contact.google ? html`<li><a class="link" href="${config.contact.google}" target="_blank" rel="noopener">Avis Google</a></li>` : ''}
           </ul>
         </div>
       </div>
@@ -243,12 +255,14 @@ function preloadImage(photo, sizes) {
  * Gabarit commun.
  *   bare    : page sans en-tête ni pied de page du site (espace salon) ;
  *   crumb   : nom de la page dans le fil d'Ariane des moteurs de recherche ;
+ *   trail   : les pages entre la une et celle-ci, dans ce fil ([{ name, path }]) ;
+ *   schema  : données structurées propres à la page (une fonction qui en renvoie la liste) ;
  *   catalog : joindre la carte des prestations aux données structurées ;
  *   preload : { photo, sizes } de la grande image à charger en priorité.
  */
 function layout(site, {
   title, description, body, bodyClass = '', styles = [], scripts = [],
-  data = null, bare = false, noindex = false, crumb = '', catalog = false, preload = null,
+  data = null, bare = false, noindex = false, crumb = '', trail = [], schema = null, catalog = false, preload = null,
 }) {
   const { config, path } = site;
   const asset = site.asset || (file => file);
@@ -295,7 +309,7 @@ ${preload ? preloadImage(preload.photo, preload.sizes) : ''}
 <link rel="stylesheet" href="${asset('/css/base.css')}">
 ${styles.map(href => html`<link rel="stylesheet" href="${asset(href)}">`)}
 <script src="${asset('/js/boot.js')}"></script>
-${bare || !origin ? '' : html`<script type="application/ld+json">${jsonForScript(structuredData({ ...site, origin }, { catalog, crumb }))}</script>`}
+${bare || !origin ? '' : html`<script type="application/ld+json">${jsonForScript(structuredData({ ...site, origin }, { catalog, crumb, trail, schema }))}</script>`}
 </head>
 <body class="${bodyClass}">
 ${sprite}

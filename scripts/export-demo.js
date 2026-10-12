@@ -8,11 +8,14 @@
  * sont calculés dans le navigateur avec les vraies règles du salon (src/time.js et src/availability.js),
  * et rien n'est enregistré nulle part. L'espace de la coiffeuse n'en fait pas partie.
  *
- *   node scripts/export-demo.js [dossier de sortie] [--base=/nom-du-depot] [--origin=https://compte.github.io]
+ *   node scripts/export-demo.js [dossier de sortie] [--base=/nom-du-depot] [--origin=https://compte.github.io] [--live=https://le-vrai-site]
  *
  * --base   : le dossier sous lequel le site sera servi (« /nom-du-depot » sur GitHub Pages) ;
  * --origin : l'adresse du serveur qui la publie, pour que l'image d'aperçu s'affiche quand on
- *            partage le lien de la démonstration.
+ *            partage le lien de la démonstration ;
+ * --live   : l'adresse du vrai site, une fois en ligne (à défaut, « siteUrl » de salon.config.js).
+ *            La démonstration lui cède alors la place : chacune de ses adresses renvoie à la même
+ *            page du vrai site, la version complète (rendez-vous enregistrés, espace salon, rappels).
  *
  * Les rappels par notification et la mesure de fréquentation ont besoin du vrai serveur : ils
  * n'existent pas dans la démonstration. Elle n'est pas proposée aux moteurs de recherche.
@@ -28,6 +31,7 @@ const args = process.argv.slice(2);
 const out = path.resolve(args.find(arg => !arg.startsWith('--')) || path.join(root, '_site'));
 const base = (args.find(arg => arg.startsWith('--base=')) || '--base=').slice(7).replace(/\/+$/, '');
 const publicOrigin = (args.find(arg => arg.startsWith('--origin=')) || '--origin=').slice(9).replace(/\/+$/, '');
+const liveArgument = (args.find(arg => arg.startsWith('--live=')) || '--live=').slice(7).replace(/\/+$/, '');
 
 // Les données du salon ne sont jamais lues : la démonstration démarre sur un dossier vide.
 const env = { ...process.env, DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'demo-')) };
@@ -38,7 +42,11 @@ const { createApp } = require('../src/app');
 const config = loadConfig(require('../salon.config.js'), env);
 
 // Les pages du site → les fichiers de la démonstration.
-const PAGES = ['prestations', 'galerie', 'reservation', 'nous-trouver', 'mentions-legales', 'confidentialite', 'conditions'];
+const PAGES = [
+  'prestations', 'galerie', 'reservation', 'nous-trouver', 'mentions-legales', 'confidentialite', 'conditions',
+  // Une page par prestation (/prestations/balayage).
+  ...config.services.map(service => `prestations/${service.id}`),
+];
 const FILES = [
   ['/', 'index.html'],
   ...PAGES.map(page => [`/${page}`, `${page}/index.html`]),
@@ -100,6 +108,9 @@ ${source('time.js')}
     './availability': function (module, exports, require) {
 ${source('availability.js')}
     },
+    './holidays': function (module, exports, require) {
+${source('holidays.js')}
+    },
   };
   var loaded = {};
   function load(name) {
@@ -112,6 +123,7 @@ ${source('availability.js')}
 
   var time = load('./time');
   var availability = load('./availability');
+  var holidays = load('./holidays');
   var config = ${JSON.stringify(settings)};
   var quickest = config.services.reduce(function (a, b) { return b.duration < a.duration ? b : a; });
   var KEY = 'demo-rendez-vous';
@@ -124,8 +136,16 @@ ${source('availability.js')}
     }
   }
 
+  // Les jours fériés sont fermés, comme sur le vrai site (personne ne les ouvre ici).
+  function closedDays(now) {
+    var none = { all: function () { return []; } };
+    var memory = { closures: none, holidays: { get: function () { return null; }, set: function () {} } };
+    return holidays.createHolidays({ config: config, store: memory, clock: function () { return now; } }).closures();
+  }
+
   function snapshot() {
-    return { config: config, bookings: bookings(), closures: [], now: time.nowInZone(config.timezone) };
+    var now = time.nowInZone(config.timezone);
+    return { config: config, bookings: bookings(), closures: closedDays(now), now: now };
   }
 
   function nextSlot() {
@@ -232,7 +252,7 @@ ${source('availability.js')}
     label.textContent = slot ? slot.label : 'voir les disponibilités';
   });
 
-  var status = availability.openStatus({ config: config, closures: [], now: now });
+  var status = availability.openStatus({ config: config, closures: closedDays(now), now: now });
   var text = 'Fermé';
   if (status.open) text = "Ouvert jusqu'à " + time.frTime(status.until);
   else if (status.date) {
@@ -314,7 +334,49 @@ html {
 }
 `;
 
+/**
+ * Le vrai site est en ligne : plus de copie « pour de faux ». Chaque adresse de la démonstration
+ * renvoie à la même page du vrai site ; une adresse inconnue y est renvoyée telle quelle.
+ */
+function writeRedirects(live) {
+  const escape = text => String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  const page = target => `<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>${escape(config.name)}</title>
+<link rel="canonical" href="${escape(target)}">
+${target ? `<meta http-equiv="refresh" content="0; url=${escape(target)}">` : ''}
+<script>
+// La même page du vrai site, avec ce qui suit l'adresse (prestation ou jour choisis, par exemple).
+var base = ${JSON.stringify(base)};
+var rest = location.pathname.indexOf(base) === 0 ? location.pathname.slice(base.length) : location.pathname;
+location.replace(${JSON.stringify(live)} + (rest.replace(/\\/+$/, '') || '/') + location.search + location.hash);
+</script>
+</head>
+<body>
+<p>Le site de ${escape(config.name)} est ici : <a href="${escape(target || live)}">${escape(target || live)}</a></p>
+</body>
+</html>
+`;
+  fs.rmSync(out, { recursive: true, force: true });
+  for (const [url, file] of FILES) {
+    const target = path.join(out, file);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    // La page « introuvable » sert pour toute adresse inconnue : c'est le script qui retrouve la bonne.
+    fs.writeFileSync(target, page(file === '404.html' ? '' : `${live}${url === '/' ? '/' : url}`));
+  }
+  fs.writeFileSync(path.join(out, '.nojekyll'), '');
+  fs.rmSync(env.DATA_DIR, { recursive: true, force: true });
+  console.log(`La démonstration renvoie au vrai site : ${live} (${FILES.length} adresses).`);
+}
+
 async function main() {
+  const live = liveArgument || config.siteUrl;
+  if (live) return writeRedirects(live);
+
   const app = createApp({ config, store: createStore(config.dataDir) });
   const server = http.createServer(app.handle);
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
