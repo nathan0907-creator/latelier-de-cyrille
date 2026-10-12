@@ -89,14 +89,16 @@ module.exports = {
   //   prices : un tarif selon la longueur — [cheveux courts, mi-longs, longs] ;
   //   priceFrom: true : affiché « dès … ».
   //
-  // ⚠ PROVISOIRE — les DURÉES (en minutes, multiples de slotStep) ne figurent pas sur la carte :
-  // ce sont des estimations. Elles décident des créneaux proposés : à faire valider par Cyrille.
+  // Les DURÉES (en minutes, multiples de slotStep) décident des créneaux proposés.
+  // Données par Cyrille : coupe brushing, homme, enfant 30 min ; couleur 1 h 30 ; balayage 2 h ;
+  // ombré patine 2 h ; ombré patine racine (« Ombré complet » sur la carte) 2 h 30 ; lissage 3 h 30.
+  // ⚠ PROVISOIRE — encore estimées, à lui faire valider : pointes, patine, mèches, micro-balayage, soins.
   priceNote: 'Tarifs « à partir de ». Supplément pour les cheveux très longs.',
   services: [
     {
       category: 'Coupes et brushing',
       items: [
-        { id: 'coupe-brushing', name: 'Coupe brushing', duration: 60, prices: [25, 30, 45] },
+        { id: 'coupe-brushing', name: 'Coupe brushing', duration: 30, prices: [25, 30, 45] },
         { id: 'coupe-fille', name: 'Filles', duration: 30, price: 15, priceFrom: true },
         { id: 'coupe-homme', name: 'Coupe homme / garçon', duration: 30, price: 13 },
         { id: 'pointes', name: 'Pointes', duration: 30, price: 10 },
@@ -108,11 +110,11 @@ module.exports = {
         { id: 'patine', name: 'Patine', duration: 60, prices: [35, 45, 50] },
         { id: 'coloration', name: 'Coloration', duration: 90, prices: [40, 50, 65] },
         { id: 'meches', name: 'Mèches', duration: 120, prices: [55, 65, 80] },
-        { id: 'balayage', name: 'Balayage', duration: 150, prices: [75, 85, 100] },
+        { id: 'balayage', name: 'Balayage', duration: 120, prices: [75, 85, 100] },
         { id: 'micro-balayage', name: 'Micro-balayage', duration: 180, prices: [85, 105, 125] },
-        { id: 'ombre-patine', name: 'Ombré patine', duration: 180, prices: [85, 105, 125] },
-        { id: 'ombre-complet', name: 'Ombré complet', duration: 210, prices: [95, 130, 155] },
-        { id: 'lissage-tanin', name: 'Lissage tanin', duration: 180, prices: [90, 150, 180] },
+        { id: 'ombre-patine', name: 'Ombré patine', duration: 120, prices: [85, 105, 125] },
+        { id: 'ombre-complet', name: 'Ombré complet', duration: 150, prices: [95, 130, 155] },
+        { id: 'lissage-tanin', name: 'Lissage tanin', duration: 210, prices: [90, 150, 180] },
       ],
     },
     {
