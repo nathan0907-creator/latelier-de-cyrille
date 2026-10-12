@@ -1237,3 +1237,17 @@
   align-items: center;
   min-height: 2.75rem;
 }
+
+/* ── Fermetures : les jours fériés ─────────────────────────────────────── */
+
+.holidays {
+  margin-top: 2.5rem;
+}
+
+.holidays .check {
+  margin-top: .75rem;
+}
+
+.holidays .view-lead {
+  margin-block: .25rem 1rem;
+}

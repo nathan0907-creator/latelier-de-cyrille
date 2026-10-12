@@ -6,9 +6,9 @@ Aucune dépendance à installer : il suffit de Node.js 22 ou plus récent.
 
 ## Démonstration en ligne
 
-Une copie de démonstration est visible sur GitHub Pages : https://nathan0907-creator.github.io/latelier-de-cyrille/
+L'adresse de démonstration sur GitHub Pages (https://nathan0907-creator.github.io/latelier-de-cyrille/) renvoie maintenant au vrai site, la version complète : chaque page de l'ancienne démonstration mène à la même page du site en ligne. L'adresse du vrai site est donnée par `--live` dans `.github/workflows/demo.yml` : à remplacer par le nom de domaine quand il sera branché.
 
-On y voit toutes les pages et on peut y essayer la réservation, mais **rien n'y est enregistré** : un hébergement de simples fichiers ne fait pas tourner le serveur du salon. Les créneaux y sont calculés dans le navigateur avec les vraies règles (horaires, durées) ; l'espace de la coiffeuse, les rappels par notification et la mesure de fréquentation n'y figurent pas. Elle est volontairement cachée aux moteurs de recherche : personne ne doit y prendre un rendez-vous qui n'existe pas. La démonstration est refaite à chaque modification et chaque nuit (`scripts/export-demo.js`, `.github/workflows/demo.yml`).
+Sans adresse de vrai site, `scripts/export-demo.js` fabrique comme avant une copie « pour de faux » : toutes les pages, une réservation calculée dans le navigateur avec les vraies règles (horaires, durées, jours fériés), rien d'enregistré, pas d'espace salon.
 
 ## Le parti pris : une gazette de coiffure
 
@@ -100,13 +100,14 @@ Cyrille peut aussi ajouter, décrire, ranger et retirer des photos elle-même, d
 - Confirmer, **déplacer** à un autre jour ou une autre heure, annuler (le créneau est aussitôt reproposé), rétablir, supprimer.
 - Noter un rendez-vous pris par téléphone ou au salon.
 - **Fréquentation** : visiteurs, pages vues, réservations en ligne, provenance (Google, Facebook…) et part des téléphones sur 30 jours. Le site compte lui-même, sans cookie ni service extérieur.
+- **Jours fériés** : le salon est fermé d'office ces jours-là, sans rien saisir, et le site l'annonce (bandeau de la une, « En bref », page de réservation). Dans l'onglet Fermetures, la coiffeuse ouvre celui qu'elle travaille, ou arrête la fermeture automatique. Un jour férié qui tombe un jour de repos ne s'affiche pas.
 - Fermer un jour, ou une période entière pour des congés (du… au…, avec un motif). La fermeture est annoncée sur le site : dans le bandeau en haut de la une (en fixe quand elle est en cours ou dans les quinze jours), dans « En bref » et sur la page de réservation, avec le jour de réouverture.
 
 ## Sécurité de l'espace salon
 
 - Mot de passe haché (scrypt, sel aléatoire) ; il n'est jamais enregistré en clair.
 - Première configuration protégée par un code à usage unique affiché côté serveur (en ligne sur Cloudflare : un secret choisi dans les réglages) : personne d'autre ne peut s'approprier l'espace.
-- Session par cookie `HttpOnly` et `SameSite=Strict` (et `Secure` en HTTPS), valable 7 jours, même si le site redémarre. Le serveur n'en garde qu'une empreinte.
+- Session par cookie `HttpOnly` et `SameSite=Strict` (et `Secure` en HTTPS). Une fois connectée, la coiffeuse le reste sur son appareil : la session se prolonge à chaque visite (400 jours sans revenir y mettent fin), et tient même si le site redémarre. Se déconnecter ou changer de mot de passe la ferme. Le serveur n'en garde que l'empreinte.
 - Blocage 15 minutes après 5 mots de passe erronés.
 - Chaque action qui modifie quelque chose doit venir du site lui-même (protection CSRF).
 - Les pages publiques ne reçoivent jamais les noms ni les téléphones : le direct annonce seulement « tel jour a changé ».
@@ -163,7 +164,7 @@ Ces réglages passent avant `salon.config.js` : une fois que Cyrille a enregistr
 
 ## Données
 
-Les données sont dans `data/` (créé au premier lancement) : `rendez-vous.json`, `fermetures.json`, `compte.json`, `sessions.json` (appareils connectés à l'espace salon), `rappels.json` (abonnements aux notifications et clés du serveur), `frequentation.json` (compteurs de visites, anonymes), `reglages.json` (ce que la coiffeuse a réglé depuis son espace) et le dossier `photos/` (les photos qu'elle a déposées). Ce dossier contient des coordonnées de clients : sauvegardez-le, ne le publiez jamais (il est déjà exclu par `.gitignore`). Les rendez-vous de plus d'un an sont effacés automatiquement.
+Les données sont dans `data/` (créé au premier lancement) : `rendez-vous.json`, `fermetures.json`, `compte.json`, `sessions.json` (appareils connectés à l'espace salon), `rappels.json` (abonnements aux notifications et clés du serveur), `frequentation.json` (compteurs de visites, anonymes), `reglages.json` (ce que la coiffeuse a réglé depuis son espace), `jours-feries.json` (jours fériés ouverts, fermeture automatique) et le dossier `photos/` (les photos qu'elle a déposées). Ce dossier contient des coordonnées de clients : sauvegardez-le, ne le publiez jamais (il est déjà exclu par `.gitignore`). Les rendez-vous de plus d'un an sont effacés automatiquement.
 
 En ligne sur Cloudflare, les mêmes données sont rangées dans la base du site chez Cloudflare (une ligne par fichier ci-dessus et une par photo déposée, voir `cloudflare/storage.js`), et non dans le dépôt : un site en ligne et l'ordinateur du salon ont chacun leurs propres rendez-vous.
 
@@ -173,7 +174,7 @@ En ligne sur Cloudflare, les mêmes données sont rangées dans la base du site 
 npm test
 ```
 
-69 tests couvrent le calcul des créneaux, les réservations, l'authentification, la sécurité HTTP, le lancement, les rappels (chiffrement vérifié sur l'exemple de la norme), la liste de contrôle (référencement, liens, images, HTTPS, fichiers privés, fréquentation) les réglages de l'espace salon (tarifs, horaires, photos, déplacement d'un rendez-vous) et le fonctionnement sur Cloudflare (pages, réservation et direct à travers l'adaptateur, code de configuration, base de données, réglages et photos).
+75 tests couvrent le calcul des créneaux, les réservations, l'authentification, la sécurité HTTP, le lancement, les rappels (chiffrement vérifié sur l'exemple de la norme), la liste de contrôle (référencement, liens, images, HTTPS, fichiers privés, fréquentation) les jours fériés, les pages par prestation, les réglages de l'espace salon (tarifs, horaires, photos, déplacement d'un rendez-vous) et le fonctionnement sur Cloudflare (pages, réservation et direct à travers l'adaptateur, code de configuration, base de données, réglages et photos).
 
 ## Mettre le site en ligne sur Cloudflare
 
@@ -226,6 +227,8 @@ Autre possibilité : un hébergement qui exécute Node.js en continu (un simple 
 4. Variables utiles : `PORT`, `HOST`, `DATA_DIR` (emplacement des données, à sauvegarder).
 
 ### Être trouvé sur Google
+
+Chaque prestation a sa propre page (`/prestations/balayage` : « Balayage à Loison-sous-Lens »), avec son tarif, sa durée et le bouton pour réserver : autant d'occasions d'être trouvé par qui cherche cette prestation dans le coin. Le plan du site les liste toutes, avec les photos de la galerie, et les jours de fermeture (congés, jours fériés) sont transmis avec les horaires.
 
 Le site donne aux moteurs de recherche tout ce qu'ils attendent : un titre et une description par page (« Coiffeuse à Loison-sous-Lens · L'atelier de Cyrille »), l'adresse de référence de chaque page, la fiche du salon en données structurées (adresse, téléphone, horaires, tarifs, lien de réservation, communes voisines), `/sitemap.xml` et `/robots.txt`. Une fois le site en ligne, trois gestes font le reste :
 

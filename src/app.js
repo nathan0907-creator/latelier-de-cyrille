@@ -10,6 +10,7 @@ const { createLimiter } = require('./ratelimit');
 const { createStatic, createVersion } = require('./static');
 const { createStats } = require('./stats');
 const { createSettings } = require('./settings');
+const { createHolidays } = require('./holidays');
 const { HttpError, clientIp, isSecure, sameOrigin, readJson, applySecurityHeaders, send, sendJson, sendHtml } = require('./http');
 const views = require('./views');
 
@@ -31,7 +32,10 @@ function createApp({
   // La configuration « vivante » : salon.config.js, plus ce que la coiffeuse a réglé depuis son espace.
   const settings = createSettings({ base, store });
   const { config } = settings;
-  const bookings = createBookings({ config, store, clock });
+  // Les jours fermés : ceux que la coiffeuse a saisis, et les jours fériés (fermés d'office).
+  const holidays = createHolidays({ config, store, clock });
+  const closedDays = () => holidays.closures();
+  const bookings = createBookings({ config, store, clock, closures: closedDays });
   const reminders = createReminders({ config, store, clock });
   const auth = createAuth({ store, setupCode });
   const events = createEvents(live);
@@ -50,7 +54,7 @@ function createApp({
   // La prestation la plus courte donne le « prochain créneau » (la carte peut changer : on la relit).
   const quickestService = () => config.services.reduce((a, b) => (b.duration < a.duration ? b : a));
   const serviceById = id => config.services.find(s => s.id === id);
-  const snapshot = () => ({ config, bookings: store.bookings.all(), closures: store.closures.all(), now: clock() });
+  const snapshot = () => ({ config, bookings: store.bookings.all(), closures: closedDays(), now: clock() });
 
   /** « aujourd'hui à 14h30 », « demain à 9h », « mar. 13 oct. à 9h » */
   function describeSlot(slot, now) {
@@ -232,15 +236,32 @@ function createApp({
 
     if (route === 'GET /api/salon/data') {
       const now = clock();
+      // L'espace salon relit ses données en s'ouvrant, puis toutes les dix minutes : c'est le moment
+      // de prolonger la session, pour que la coiffeuse n'ait pas à se reconnecter.
+      const renewed = auth.renewSession(session, secure);
       return json(200, {
         today: now.date,
         nowMinutes: now.minutes,
         bookings: store.bookings.all(),
         closures: store.closures.all(),
+        holidays: holidays.state(),
         // La carte et les horaires du moment : ils peuvent avoir changé depuis l'ouverture de la page.
         services: config.services.map(({ id, name, duration, price, priceFrom, category }) => ({ id, name, duration, price, priceFrom, category })),
         hours: config.hours,
-      });
+      }, renewed ? { 'Set-Cookie': renewed } : undefined);
+    }
+
+    // Jours fériés : fermeture automatique ou non ({ auto }), ouvrir ou refermer un jour ({ date, open }).
+    if (route === 'PUT /api/salon/holidays') {
+      const body = await readJson(req);
+      if (typeof body.auto === 'boolean') holidays.setAuto(body.auto);
+      else if (!isValidDate(body.date) || typeof body.open !== 'boolean' || !holidays.setOpen(body.date, body.open)) {
+        return json(400, { error: "Ce jour n'est pas un jour férié à venir." });
+      }
+      // Les pages de réservation ouvertes relisent ces jours-là.
+      for (const day of holidays.upcoming()) events.send('public', 'slots', { date: day.date });
+      events.send('salon', 'closures', { closures: store.closures.all(), holidays: holidays.state() });
+      return json(200, { holidays: holidays.state() });
     }
 
     // — Réglages : ce que la coiffeuse modifie elle-même —
@@ -323,7 +344,7 @@ function createApp({
       for (let date = body.date; date <= until; date = addDays(date, 1)) added.push({ date, reason });
       store.closures.addMany(added);
       for (const closure of added) events.send('public', 'slots', { date: closure.date });
-      events.send('salon', 'closures', { closures: store.closures.all() });
+      events.send('salon', 'closures', { closures: store.closures.all(), holidays: holidays.state() });
       return json(201, { closure: added[0], closures: store.closures.all() });
     }
 
@@ -336,7 +357,7 @@ function createApp({
       const reopened = store.closures.removeRange(from, until);
       if (!reopened.length) return json(404, { error: 'Fermeture introuvable.' });
       for (const date of reopened) events.send('public', 'slots', { date });
-      events.send('salon', 'closures', { closures: store.closures.all() });
+      events.send('salon', 'closures', { closures: store.closures.all(), holidays: holidays.state() });
       return json(200, { ok: true, closures: store.closures.all() });
     }
 
@@ -370,14 +391,23 @@ function createApp({
     });
   }
 
+  /**
+   * Le plan du site pour les moteurs de recherche : les pages du journal, une page par prestation,
+   * et les photos de la une et de la galerie (pour la recherche d'images).
+   */
   function sitemap(origin) {
     // Dernière mise à jour du contenu : le fichier de configuration du salon, ou le dernier réglage
     // fait depuis l'espace salon s'il est plus récent.
     const edited = settings.updatedAt().slice(0, 10);
     const written = config.updated || clock().date;
     const lastModified = edited > written ? edited : written;
-    const urls = views.publicPaths.map(p => `  <url><loc>${origin}${p === '/' ? '/' : p}</loc><lastmod>${lastModified}</lastmod></url>`).join('\n');
-    return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
+    const escape = text => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const absolute = src => (src.startsWith('/') ? `${origin}${src}` : src);
+    const photos = config.photos.gallery.filter(photo => photo && photo.src)
+      .map(photo => `<image:image><image:loc>${escape(absolute(photo.src))}</image:loc></image:image>`).join('');
+    const paths = [...views.publicPaths, ...config.services.map(service => `/prestations/${service.id}`)];
+    const urls = paths.map(p => `  <url><loc>${origin}${p === '/' ? '/' : p}</loc><lastmod>${lastModified}</lastmod>${p === '/' || p === '/galerie' ? photos : ''}</url>`).join('\n');
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n${urls}\n</urlset>\n`;
   }
 
   async function page(req, res, url) {
@@ -395,7 +425,9 @@ function createApp({
       return send(req, res, 200, { 'Content-Type': 'application/manifest+json; charset=utf-8' }, manifest(pathname === '/salon.webmanifest'));
     }
 
-    const render = views.pages[pathname];
+    // Une page du journal, ou la page d'une prestation (/prestations/balayage).
+    const item = /^\/prestations\/[a-z0-9-]+$/.test(pathname) && serviceById(pathname.slice(13));
+    const render = views.pages[pathname] || (item && (site => views.service(site, item)));
     if (render) {
       const salon = pathname === '/salon';
       // Une visite du site (pas de l'espace salon, ni de la coiffeuse connectée) : on la compte.
@@ -490,7 +522,7 @@ function createApp({
     events.close();
   }
 
-  return { handle, close, maintain, auth, events, reminders, stats, settings, config };
+  return { handle, close, maintain, auth, events, reminders, stats, settings, holidays, config };
 }
 
 module.exports = { createApp };

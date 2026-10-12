@@ -76,7 +76,8 @@ test('référencement : données structurées du salon, plan du site, robots.txt
   const sitemap = await site.request('GET', '/sitemap.xml');
   assert.match(sitemap.headers['content-type'], /application\/xml/);
   const listed = [...sitemap.text.matchAll(/<loc>([^<]+)<\/loc><lastmod>\d{4}-\d{2}-\d{2}<\/lastmod>/g)].map(m => m[1].replace(site.origin, ''));
-  assert.deepEqual(listed, ['/', '/prestations', '/galerie', '/nous-trouver', '/reservation']);
+  assert.deepEqual(listed, ['/', '/prestations', '/galerie', '/nous-trouver', '/reservation', '/prestations/court', '/prestations/moyen', '/prestations/long'],
+    'les pages du journal, puis une page par prestation');
 
   // L'espace de la coiffeuse et les pages introuvables restent hors des moteurs de recherche.
   const salonPage = await site.request('GET', '/salon');

@@ -1435,3 +1435,28 @@
 .prose h3 + p {
   margin-top: .35rem;
 }
+
+/* ── Tarifs : le nom d'une prestation mène à sa page ───────────────────── */
+
+.prices-name {
+  color: inherit;
+  text-decoration: none;
+}
+
+.prices-name:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--gold);
+  text-decoration-thickness: 2px;
+  text-underline-offset: .2em;
+}
+
+/* La page d'une prestation : durée, adresse, téléphone, sous le tarif */
+.service-facts {
+  max-width: 34rem;
+  margin-top: 1.5rem;
+}
+
+.menu-group .notice-line,
+.menu-group > .actions {
+  margin-top: 1.5rem;
+}

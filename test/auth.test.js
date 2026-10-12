@@ -94,8 +94,19 @@ test('sessions : jeton aléatoire, expiration, déconnexion', async () => {
   assert.equal(auth.readSession(requestWith(other.token)), null);
   assert.ok(auth.readSession(requestWith(session.token)));
 
-  time += 8 * 24 * 3600 * 1000;
-  assert.equal(auth.readSession(requestWith(session.token)), null, 'session expirée après 7 jours');
+  // Une fois connectée, la coiffeuse le reste : la session se prolonge à chaque visite.
+  const DAY = 24 * 3600 * 1000;
+  assert.equal(auth.renewSession(auth.readSession(requestWith(session.token)), true), null, 'pas de prolongation dans la journée');
+  time += 30 * DAY;
+  const renewed = auth.renewSession(auth.readSession(requestWith(session.token)), true);
+  assert.match(renewed, new RegExp(`^salon_session=${session.token}; .*Max-Age=${400 * 24 * 3600}`), 'le même jeton, pour 400 jours de plus');
+  time += 390 * DAY;
+  assert.ok(auth.readSession(requestWith(session.token)), 'toujours connectée 420 jours après la connexion');
+  assert.equal(auth.renewSession({ id: 'inconnue', token: 'x' }, true), null);
+
+  // Un appareil qui ne revient plus pendant 400 jours est déconnecté.
+  time += 401 * DAY;
+  assert.equal(auth.readSession(requestWith(session.token)), null, 'session expirée après 400 jours sans visite');
 });
 
 test('changer de mot de passe exige le mot de passe actuel', async () => {
