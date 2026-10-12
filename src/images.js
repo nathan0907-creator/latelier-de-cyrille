@@ -3,14 +3,19 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-/** Largeur et hauteur d'une image (WebP, PNG, JPEG), lues dans son en-tête. null si le format est inconnu. */
-function imageSize(file) {
-  let data;
+/**
+ * Largeur et hauteur d'une image (WebP, PNG, JPEG), lues dans son en-tête. source : le chemin
+ * d'un fichier, ou les octets eux-mêmes. null si le fichier manque ou si le format est inconnu.
+ */
+function imageSize(source) {
   try {
-    data = fs.readFileSync(file);
+    return readSize(Buffer.isBuffer(source) ? source : fs.readFileSync(source));
   } catch {
-    return null;
+    return null; // fichier absent, ou trop court pour contenir un en-tête
   }
+}
+
+function readSize(data) {
   const size = (width, height) => (width > 0 && height > 0 ? { width, height } : null);
 
   if (data.toString('latin1', 0, 4) === 'RIFF' && data.toString('latin1', 8, 12) === 'WEBP') {

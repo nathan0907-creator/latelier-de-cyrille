@@ -54,6 +54,16 @@ function generateSetupCode() {
 
 const normalizeCode = code => String(code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
+/** L'identifiant ne tient pas compte des majuscules ni des espaces autour. */
+const normalizeUsername = username => String(username ?? '').normalize('NFKC').trim().toLowerCase();
+
+/** Message d'erreur si l'identifiant ne convient pas, sinon null. */
+function usernameProblem(username) {
+  return /^[a-z0-9][a-z0-9._@-]{2,59}$/.test(normalizeUsername(username))
+    ? null
+    : 'Choisissez un identifiant de 3 caractères au moins (lettres sans accent, chiffres, point, tiret, ou une adresse e-mail).';
+}
+
 function parseCookies(header) {
   const cookies = {};
   for (const part of String(header || '').split(';')) {
@@ -70,7 +80,8 @@ const MIN_SECRET_CODE = 8;
 
 /**
  * Accès à l'espace salon.
- * - Première utilisation : un code à usage unique autorise la création du mot de passe (personne
+ * - On se connecte avec un identifiant et un mot de passe, choisis à la première utilisation.
+ * - Première utilisation : un code à usage unique autorise la création du compte (personne
  *   d'autre ne peut s'approprier l'espace). Sur l'ordinateur du salon, le serveur le tire au sort
  *   et l'affiche dans sa fenêtre. En ligne sur Cloudflare, c'est le secret SETUP_CODE (setupCode) ;
  *   le remplacer par un nouveau code permet de choisir un nouveau mot de passe (mot de passe oublié).
@@ -99,19 +110,19 @@ function createAuth({ store, now = Date.now, setupCode: secret }) {
     return setupCode;
   }
 
-  async function setup(code, password) {
+  async function setup(code, password, username) {
     if (isConfigured()) return failure(409, "L'espace salon est déjà configuré.");
     const expected = currentSetupCode();
     if (!expected) {
       return failure(503, `Ajoutez d'abord le secret SETUP_CODE (${MIN_SECRET_CODE} lettres ou chiffres au moins) dans les réglages du site sur Cloudflare.`);
     }
     if (!safeEqual(normalizeCode(code), normalizeCode(expected))) return failure(403, 'Code de configuration incorrect.');
-    const problem = passwordProblem(password);
+    const problem = usernameProblem(username) || passwordProblem(password);
     if (problem) return failure(400, problem);
     if (settingUp) return failure(409, "L'espace salon est en cours de configuration."); // usage unique
     settingUp = true;
     try {
-      store.admin.set({ ...(await hashPassword(password)), ...(codeKey && { codeKey }), createdAt: new Date().toISOString() });
+      store.admin.set({ username: normalizeUsername(username), ...(await hashPassword(password)), ...(codeKey && { codeKey }), createdAt: new Date().toISOString() });
     } finally {
       settingUp = false;
     }
@@ -121,9 +132,15 @@ function createAuth({ store, now = Date.now, setupCode: secret }) {
     return { ok: true };
   }
 
-  async function login(password) {
+  async function login(username, password) {
     if (!isConfigured()) return failure(409, "L'espace salon n'est pas encore configuré.");
-    if (!(await verifyPassword(password, store.admin.get()))) return failure(401, 'Mot de passe incorrect.');
+    const record = store.admin.get();
+    // Le mot de passe est toujours vérifié, même si l'identifiant est faux : la réponse ne dit
+    // pas lequel des deux est en cause, ni par son texte ni par le temps qu'elle met.
+    const passwordOk = await verifyPassword(password, record);
+    // Un compte créé avant l'arrivée des identifiants n'en a pas : seul son mot de passe compte.
+    const usernameOk = !record.username || safeEqual(normalizeUsername(username), record.username);
+    if (!passwordOk || !usernameOk) return failure(401, record.username ? 'Identifiant ou mot de passe incorrect.' : 'Mot de passe incorrect.');
     return { ok: true };
   }
 
@@ -132,8 +149,8 @@ function createAuth({ store, now = Date.now, setupCode: secret }) {
     if (!(await verifyPassword(current, store.admin.get()))) return failure(403, 'Mot de passe actuel incorrect.');
     const problem = passwordProblem(next);
     if (problem) return failure(400, problem);
-    const { createdAt, codeKey: key } = store.admin.get();
-    store.admin.set({ ...(await hashPassword(next)), ...(key && { codeKey: key }), createdAt, changedAt: new Date().toISOString() });
+    const { username, createdAt, codeKey: key } = store.admin.get();
+    store.admin.set({ ...(username && { username }), ...(await hashPassword(next)), ...(key && { codeKey: key }), createdAt, changedAt: new Date().toISOString() });
     return { ok: true };
   }
 
@@ -168,6 +185,8 @@ function createAuth({ store, now = Date.now, setupCode: secret }) {
 
   return {
     isConfigured,
+    /** Le compte a-t-il un identifiant ? (Un compte ancien n'a qu'un mot de passe.) */
+    hasUsername: () => Boolean(store.admin.get()?.username),
     setupCode: currentSetupCode,
     /** Où trouver le code de configuration : dans la fenêtre du serveur, ou dans les réglages de Cloudflare. */
     codeSource: fixedCode === null ? 'console' : 'secret',
@@ -190,4 +209,4 @@ function createAuth({ store, now = Date.now, setupCode: secret }) {
   };
 }
 
-module.exports = { createAuth, hashPassword, verifyPassword, passwordProblem, generateSetupCode, COOKIE_NAME };
+module.exports = { createAuth, hashPassword, verifyPassword, passwordProblem, usernameProblem, generateSetupCode, COOKIE_NAME };

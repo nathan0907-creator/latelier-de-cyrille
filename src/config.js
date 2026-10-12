@@ -2,12 +2,8 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { toMinutes } = require('./time');
+const { fail, buildHours, buildServices } = require('./config-parts');
 const { describePhoto } = require('./images');
-
-function fail(message) {
-  throw new Error(`salon.config.js : ${message}`);
-}
 
 /** Lit salon.config.js, le vérifie et renvoie une configuration prête à l'emploi. */
 function loadConfig(raw = require('../salon.config.js'), env = process.env) {
@@ -22,54 +18,8 @@ function loadConfig(raw = require('../salon.config.js'), env = process.env) {
   }
   if (!Number.isInteger(booking.slotStep) || booking.slotStep < 5) fail('« booking.slotStep » doit être un entier ≥ 5.');
 
-  const hours = {};
-  for (let day = 0; day < 7; day++) {
-    const ranges = (raw.hours?.[day] || []).map(([from, to]) => {
-      const start = toMinutes(from);
-      const end = toMinutes(to);
-      if (start === null || end === null || end <= start) fail(`horaires invalides pour le jour ${day} : ${from} – ${to}.`);
-      if (start % booking.slotStep) fail(`l'ouverture ${from} (jour ${day}) doit tomber sur un créneau de ${booking.slotStep} min.`);
-      return { start, end };
-    }).sort((a, b) => a.start - b.start);
-    for (let i = 1; i < ranges.length; i++) {
-      if (ranges[i].start < ranges[i - 1].end) fail(`les plages horaires du jour ${day} se chevauchent.`);
-    }
-    hours[day] = ranges;
-  }
-
-  const services = [];
-  const categories = [];
-  const ids = new Set();
-  for (const group of raw.services || []) {
-    if (!group.category) fail('chaque groupe de prestations doit avoir une « category ».');
-    const items = [];
-    for (const s of group.items || []) {
-      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(s.id || '')) fail(`identifiant de prestation invalide : « ${s.id} » (minuscules, chiffres et tirets).`);
-      if (ids.has(s.id)) fail(`identifiant de prestation en double : « ${s.id} ».`);
-      if (!s.name) fail(`la prestation « ${s.id} » n'a pas de nom.`);
-      if (!Number.isInteger(s.duration) || s.duration <= 0 || s.duration % booking.slotStep) {
-        fail(`la durée de « ${s.id} » doit être un multiple de ${booking.slotStep} minutes.`);
-      }
-      // « prices » : plusieurs tarifs (cheveux courts, mi-longs, longs). Le prix retenu pour
-      // la réservation est alors le plus bas, affiché « dès … ».
-      const tiers = s.prices === undefined ? null : s.prices;
-      if (tiers && (!Array.isArray(tiers) || tiers.length < 2 || tiers.length > 3 || tiers.some(p => typeof p !== 'number' || p < 0))) {
-        fail(`les prix de « ${s.id} » sont invalides : indiquez deux ou trois montants.`);
-      }
-      const price = tiers ? Math.min(...tiers) : s.price;
-      if (typeof price !== 'number' || price < 0) fail(`le prix de « ${s.id} » est invalide.`);
-      ids.add(s.id);
-      const service = Object.freeze({
-        id: s.id, name: s.name, description: s.description || '', duration: s.duration,
-        price, prices: tiers ? Object.freeze([...tiers]) : null,
-        priceFrom: Boolean(s.priceFrom || tiers), category: group.category,
-      });
-      services.push(service);
-      items.push(service);
-    }
-    categories.push({ name: group.category, items });
-  }
-  if (!services.length) fail('ajoutez au moins une prestation.');
+  const hours = buildHours(raw.hours, booking.slotStep);
+  const { services, categories } = buildServices(raw.services, booking.slotStep);
 
   const address = { street: '', postalCode: '', city: '', mapsQuery: '', access: [], ...raw.address };
   const fullAddress = `${address.street}, ${address.postalCode} ${address.city}`.trim();
