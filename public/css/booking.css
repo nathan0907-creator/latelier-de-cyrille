@@ -660,6 +660,7 @@
   letter-spacing: -.01em;
   line-height: 1;
   text-transform: none;
+  white-space: nowrap;
 }
 
 .summary-salon {
@@ -761,5 +762,46 @@
   .calendar-weekdays,
   .calendar-grid {
     gap: 2px;
+  }
+}
+
+/* ── Étape 1 : le tableau des prestations ──────────────────────────────── */
+/* Le même tableau que sur la une et la carte ; ici, chaque ligne se choisit. */
+
+.booking .prices {
+  --price-col: clamp(3.3rem, 11vw, 6.75rem);
+}
+
+.ads-group + .prices {
+  margin-top: -1.25rem;
+}
+
+.prices--pick tbody tr {
+  cursor: pointer;
+}
+
+.prices--pick .prices-book {
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* La prestation choisie : ligne surlignée, bouton plein */
+.prices--pick tr:has(.service-card[aria-pressed="true"]) th,
+.prices--pick tr:has(.service-card[aria-pressed="true"]) td {
+  background: var(--marker);
+}
+
+.prices--pick .service-card[aria-pressed="true"] {
+  border-color: var(--red);
+  background: var(--red);
+  color: #fff;
+}
+
+@media (min-width: 46rem) {
+  .prices--pick .prices-book {
+    font-family: var(--font-label);
+    font-size: 1rem;
+    font-weight: 700;
   }
 }

@@ -3,15 +3,15 @@
 const { html } = require('./html');
 const { icon } = require('./icons');
 const { layout } = require('./layout');
-const { PAGES, folio, splitTitle, kicker, penCircle, durationLabel, priceLabel, priceDetail, telHref, pad2, closureWording } = require('./components');
+const { PAGES, folio, splitTitle, kicker, priceTable, telHref, closureWording } = require('./components');
 const { lastBookableDate } = require('../availability');
 
-const STEPS = ["L'annonce", 'Le créneau', 'Le coupon'];
+const STEPS = ['La prestation', 'Le créneau', 'Le coupon'];
 const WEEKDAY_LABELS = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
 
 /**
  * Page 4 — Prendre rendez-vous (présentée comme une page de petites annonces).
- *   1. On entoure une annonce (la prestation) au stylo rouge.
+ *   1. On choisit une prestation dans le tableau des tarifs.
  *   2. On arrache une languette de l'affichette (le créneau).
  *   3. On remplit le coupon-réponse (les coordonnées).
  */
@@ -27,7 +27,6 @@ function booking(site) {
     salon: { name: config.name, address: config.address.full, phone },
   };
 
-  let ref = 0;
   const body = html`
 <main id="contenu" class="page booking" data-booking>
   <div class="container">
@@ -60,18 +59,10 @@ function booking(site) {
     <div class="booking-grid">
       <div class="booking-main">
         <section class="panel" data-step="1" aria-labelledby="etape-1">
-          <h2 class="panel-title" id="etape-1" tabindex="-1">Entourez votre annonce</h2>
+          <h2 class="panel-title" id="etape-1" tabindex="-1">Choisissez votre prestation</h2>
           ${config.categories.map(category => html`
           <h3 class="ads-group">${category.name}</h3>
-          <div class="ads ads--pick">
-            ${category.items.map(service => html`<button type="button" class="ad service-card" data-service="${service.id}" aria-pressed="false">
-              <span class="ad-ref">Annonce n°&nbsp;${pad2(++ref)}</span>
-              <strong class="ad-title">${service.name}</strong>
-              ${service.prices ? html`<span class="ad-text">${priceDetail(service)}</span>` : service.description ? html`<span class="ad-text">${service.description}</span>` : ''}
-              <span class="ad-foot"><span>${durationLabel(service.duration)}</span><b>${priceLabel(service)}</b></span>
-              ${penCircle}
-            </button>`)}
-          </div>`)}
+          ${priceTable(category.items, `${category.name} : choisissez une prestation`, { pick: true })}`)}
         </section>
 
         <section class="panel" data-step="2" aria-labelledby="etape-2" hidden>
@@ -100,7 +91,7 @@ function booking(site) {
             </div>
           </div>
           <div class="panel-actions">
-            <button type="button" class="link" data-goto="1">${icon('chevron-left')} Changer d'annonce</button>
+            <button type="button" class="link" data-goto="1">${icon('chevron-left')} Changer de prestation</button>
             <button type="button" class="btn" data-continue disabled><span>Continuer</span>${icon('arrow-right')}</button>
           </div>
         </section>
@@ -158,7 +149,7 @@ function booking(site) {
       <aside class="summary" data-summary aria-label="Votre rendez-vous">
         <h2 class="summary-title">Votre rendez-vous</h2>
         <dl class="summary-list">
-          <div><dt>Prestation</dt><dd data-sum="service">À entourer</dd></div>
+          <div><dt>Prestation</dt><dd data-sum="service">À choisir</dd></div>
           <div><dt>Date</dt><dd data-sum="date">—</dd></div>
           <div><dt>Heure</dt><dd data-sum="time">—</dd></div>
           <div><dt>Durée</dt><dd data-sum="duration">—</dd></div>

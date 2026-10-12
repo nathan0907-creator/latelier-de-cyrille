@@ -1,5 +1,5 @@
-// Page 4, « Prendre rendez-vous », présentée comme une page de petites annonces : on entoure
-// une annonce (la prestation), on arrache une languette (le créneau), on renvoie le coupon.
+// Page 4, « Prendre rendez-vous » : on choisit une prestation dans le tableau des tarifs,
+// on arrache une languette (le créneau), on renvoie le coupon (ses coordonnées).
 // Les disponibilités viennent toujours du serveur et se mettent à jour en direct.
 
 import {
@@ -117,7 +117,7 @@ function setSummary(key, text) {
 
 function renderSummary() {
   const { service, date, time } = state;
-  setSummary('service', service ? service.name : 'À entourer');
+  setSummary('service', service ? service.name : 'À choisir');
   setSummary('date', date ? capitalize(formatLong(date)) : '—');
   setSummary('time', time ? `${frTime(time)} – ${frTime(toMinutes(time) + service.duration)}` : '—');
   setSummary('duration', service ? durationLabel(service.duration) : '—');
@@ -136,7 +136,7 @@ function renderBar() {
   el.bar.querySelector('[data-bar="price"]').textContent = priceText(service);
 }
 
-// ── Étape 1 : l'annonce ───────────────────────────────────────────────────
+// ── Étape 1 : la prestation ───────────────────────────────────────────────
 
 function selectService(id, { focus = true } = {}) {
   const service = services.get(id);
@@ -158,8 +158,8 @@ function selectService(id, { focus = true } = {}) {
   }
   renderSummary();
   renderStepper();
-  // On laisse au trait de stylo le temps d'entourer l'annonce avant de tourner la page.
-  setTimeout(() => goTo(2, { focus }), reducedMotion ? 0 : 640);
+  // La ligne choisie se surligne un instant avant de passer à la suite.
+  setTimeout(() => goTo(2, { focus }), reducedMotion ? 0 : 320);
 }
 
 // ── Étape 2 : calendrier ──────────────────────────────────────────────────
@@ -256,7 +256,7 @@ const HINT_BEFORE = "Choisissez d'abord un jour dans le calendrier.";
 const HINT_AFTER = 'Les languettes qui manquent sont déjà prises.';
 
 let slotsRequest = 0;
-// Annonce et jour auxquels correspondent les créneaux en mémoire (vide tant que le serveur n'a pas répondu).
+// Prestation et jour auxquels correspondent les créneaux en mémoire (vide tant que le serveur n'a pas répondu).
 let slotsKnownFor = '';
 const slotsKey = () => (state.service && state.date ? `${state.service.id}|${state.date}` : '');
 
@@ -537,7 +537,8 @@ function connect() {
 // ── Démarrage ─────────────────────────────────────────────────────────────
 
 root.addEventListener('click', event => {
-  const button = event.target.closest('button');
+  // Dans le tableau des prestations, toute la ligne est cliquable (le bouton reste la cible au clavier).
+  const button = event.target.closest('button') || event.target.closest('.prices--pick tbody tr')?.querySelector('.service-card');
   if (!button || button.disabled) return;
   if (button.dataset.service) selectService(button.dataset.service);
   else if (button.dataset.goto) goTo(Number(button.dataset.goto));
@@ -550,7 +551,7 @@ root.addEventListener('click', event => {
 });
 
 // Liens directs :
-//   /reservation?service=coupe-homme   depuis la carte ou une annonce de la une ;
+//   /reservation?service=coupe-homme   depuis une ligne du tableau des tarifs (une, carte) ;
 //   /reservation?date=2026-10-13       depuis une languette de l'affichette de la une.
 const params = new URLSearchParams(location.search);
 const presetDate = params.get('date') || '';

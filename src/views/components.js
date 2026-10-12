@@ -204,11 +204,11 @@ const penCircle = raw(`<svg class="pen" viewBox="0 0 300 150" preserveAspectRati
 /**
  * Tableau de tarifs : la prestation à gauche, les prix à droite, une colonne par longueur
  * de cheveux. Une prestation à tarif unique occupe les trois colonnes ; la dernière case
- * mène à la réservation de cette prestation.
+ * mène à la réservation de cette prestation — ou, avec pick, la choisit (page de réservation).
  */
-function priceTable(services, caption) {
+function priceTable(services, caption, { pick = false } = {}) {
   const byLength = services.some(service => service.prices && service.prices.length === 3);
-  return html`<table class="prices">
+  return html`<table class="prices ${pick ? 'prices--pick' : ''}">
     <caption class="sr-only">${caption}</caption>
     <thead>
       <tr>
@@ -216,7 +216,7 @@ function priceTable(services, caption) {
         ${byLength
           ? LENGTHS.map(length => html`<th scope="col" class="prices-length"><span class="prices-more">Cheveux </span><span class="prices-word">${length.toLowerCase()}</span></th>`)
           : html`<th scope="col" class="prices-length" colspan="3">Tarif</th>`}
-        <th scope="col" class="prices-go"><span class="sr-only">Réserver</span></th>
+        <th scope="col" class="prices-go"><span class="sr-only">${pick ? 'Choisir' : 'Réserver'}</span></th>
       </tr>
     </thead>
     <tbody data-stagger>
@@ -225,7 +225,9 @@ function priceTable(services, caption) {
         ${service.prices && service.prices.length === 3
           ? service.prices.map(price => html`<td>${euros(price)}</td>`)
           : html`<td colspan="3" class="prices-single">${service.prices ? service.prices.map(euros).join(' / ') : priceLabel(service)}</td>`}
-        <td class="prices-go"><a class="prices-book" href="/reservation?service=${service.id}" aria-label="Réserver : ${service.name}"><span>Réserver</span>${icon('arrow-right')}</a></td>
+        <td class="prices-go">${pick
+          ? html`<button type="button" class="prices-book service-card" data-service="${service.id}" aria-pressed="false" aria-label="Choisir : ${service.name}"><span>Choisir</span>${icon('arrow-right')}</button>`
+          : html`<a class="prices-book" href="/reservation?service=${service.id}" aria-label="Réserver : ${service.name}"><span>Réserver</span>${icon('arrow-right')}</a>`}</td>
       </tr>`)}
     </tbody>
   </table>`;
