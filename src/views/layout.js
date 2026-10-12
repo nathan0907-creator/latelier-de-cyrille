@@ -2,7 +2,7 @@
 
 const { html, raw, jsonForScript } = require('./html');
 const { icon, sprite } = require('./icons');
-const { PAGES, edition, capitalize, hoursTable, openBadge, telHref, buttonLabel } = require('./components');
+const { PAGES, edition, capitalize, hoursTable, openBadge, telHref, buttonLabel, euros } = require('./components');
 const { fromMinutes } = require('../time');
 
 // Les quatre familles de la gazette :
@@ -14,18 +14,35 @@ const FONTS = 'https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@400.
 
 const SCHEMA_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-/** Données structurées « salon de coiffure » lues par les moteurs de recherche. */
-function structuredData(config) {
-  return {
-    '@context': 'https://schema.org',
+/** « 07 45 07 50 16 » → « +33745075016 », la forme que lisent les moteurs de recherche. */
+const internationalPhone = phone => {
+  const digits = phone.replace(/[^\d+]/g, '');
+  return /^0\d{9}$/.test(digits) ? `+33${digits.slice(1)}` : digits;
+};
+
+/**
+ * Données structurées lues par les moteurs de recherche : la fiche du salon (adresse, horaires,
+ * téléphone, réservation), sa carte de prestations sur les pages qui la montrent, et le fil
+ * d'Ariane des pages intérieures.
+ */
+function structuredData(site, { catalog = false, crumb = '' } = {}) {
+  const { config, origin, path } = site;
+  const at = target => `${origin}${target}`;
+  const prices = config.services.flatMap(service => service.prices || [service.price]);
+  const images = [config.shareImage, config.photos.hero && config.photos.hero.src].filter(Boolean).map(src => (src.startsWith('/') ? at(src) : src));
+
+  const salon = {
     '@type': 'HairSalon',
+    '@id': at('/#salon'),
     name: config.name,
     description: config.description,
-    ...(config.siteUrl && { url: config.siteUrl }),
-    ...(config.contact.phone && { telephone: config.contact.phone }),
+    url: at('/'),
+    ...(config.contact.phone && { telephone: internationalPhone(config.contact.phone) }),
     ...(config.contact.email && { email: config.contact.email }),
-    ...(config.contact.facebook && { sameAs: [config.contact.facebook] }),
-    ...(config.photos.hero && { image: config.photos.hero.src }),
+    ...(images.length && { image: images }),
+    logo: at('/img/icone-512.png'),
+    priceRange: `${euros(Math.min(...prices))} – ${euros(Math.max(...prices))}`,
+    currenciesAccepted: 'EUR',
     address: {
       '@type': 'PostalAddress',
       streetAddress: config.address.street,
@@ -33,6 +50,8 @@ function structuredData(config) {
       addressLocality: config.address.city,
       addressCountry: 'FR',
     },
+    areaServed: [config.address.city, ...config.seo.nearby].map(name => ({ '@type': 'City', name })),
+    hasMap: config.maps.view,
     openingHoursSpecification: Object.entries(config.hours).flatMap(([day, ranges]) =>
       ranges.map(range => ({
         '@type': 'OpeningHoursSpecification',
@@ -40,8 +59,44 @@ function structuredData(config) {
         opens: fromMinutes(range.start),
         closes: fromMinutes(range.end),
       }))),
-    paymentAccepted: 'Paiement sur place',
+    ...((config.contact.facebook || config.contact.instagram) && { sameAs: [config.contact.facebook, config.contact.instagram].filter(Boolean) }),
+    potentialAction: {
+      '@type': 'ReserveAction',
+      name: 'Prendre rendez-vous',
+      target: { '@type': 'EntryPoint', urlTemplate: at('/reservation'), inLanguage: 'fr-FR', actionPlatform: ['https://schema.org/DesktopWebPlatform', 'https://schema.org/MobileWebPlatform'] },
+      result: { '@type': 'Reservation', name: 'Rendez-vous au salon' },
+    },
+    ...(catalog && {
+      hasOfferCatalog: {
+        '@type': 'OfferCatalog',
+        name: 'Prestations et tarifs',
+        itemListElement: config.categories.map(category => ({
+          '@type': 'OfferCatalog',
+          name: category.name,
+          itemListElement: category.items.map(service => ({
+            '@type': 'Offer',
+            price: service.price,
+            priceCurrency: 'EUR',
+            itemOffered: { '@type': 'Service', name: service.name },
+          })),
+        })),
+      },
+    }),
   };
+
+  const graph = [salon];
+  if (path === '/') {
+    graph.push({ '@type': 'WebSite', '@id': at('/#site'), url: at('/'), name: config.name, inLanguage: 'fr-FR', publisher: { '@id': salon['@id'] } });
+  } else if (crumb) {
+    graph.push({
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: config.name, item: at('/') },
+        { '@type': 'ListItem', position: 2, name: crumb, item: at(path) },
+      ],
+    });
+  }
+  return { '@context': 'https://schema.org', '@graph': graph };
 }
 
 /** Le titre de la gazette, en écriture d'enseigne. */
@@ -99,6 +154,22 @@ function dock(site) {
   </a>`;
 }
 
+/**
+ * Avis sur les cookies. Le site n'en dépose aucun pour suivre ses visiteurs ; la seule chose à
+ * accepter ou refuser est le plan Google Maps. Les deux boutons ont le même poids, et le choix
+ * se modifie à tout moment depuis le pied de page (voir site.js).
+ */
+function cookieNotice() {
+  return html`<section class="cookies" aria-label="Cookies" data-cookies hidden>
+    <p class="cookies-text"><strong>Cookies.</strong> Ce site ne vous suit pas : ni publicité, ni traceur. Seul le plan Google Maps de la page Pratique dépose des cookies de Google. Les acceptez-vous&nbsp;?</p>
+    <div class="cookies-actions">
+      <button type="button" class="btn btn--small" data-cookies-choice="non">${buttonLabel('Refuser')}</button>
+      <button type="button" class="btn btn--small" data-cookies-choice="oui">${buttonLabel('Accepter')}</button>
+      <a class="link" href="/confidentialite#cookies">En savoir plus</a>
+    </div>
+  </section>`;
+}
+
 /** Bas de page : « tournez la page », comme dans un journal. */
 function pager(path) {
   const index = PAGES.findIndex(page => page.path === path);
@@ -124,6 +195,7 @@ function footer(site) {
         <div class="ours-col ours-brand">
           ${brand(config)}
           <p>${config.tagline}${config.tagline ? ' · ' : ''}${config.address.city}</p>
+          ${config.booking.appointmentOnly ? html`<p class="ours-rule">${config.booking.appointmentOnly}</p>` : ''}
           ${openBadge(status)}
         </div>
         <div class="ours-col">
@@ -150,25 +222,42 @@ function footer(site) {
         <p>© ${now.date.slice(0, 4)} ${config.name} · ${capitalize(edition(now).date)}</p>
         <ul>
           <li><a href="/mentions-legales">L'ours : mentions légales</a></li>
-          <li><a href="/salon">La rédaction</a></li>
+          <li><a href="/confidentialite">Confidentialité</a></li>
+          <li><a href="/conditions">Conditions d'utilisation</a></li>
+          <li><button type="button" class="ours-button" data-cookies-open>Cookies</button></li>
+          <li><a href="/salon" rel="nofollow">La rédaction</a></li>
         </ul>
       </div>
     </div>
   </footer>`;
 }
 
+/** Grande photo de la une : le navigateur la demande dès la lecture de l'en-tête, avant les styles. */
+function preloadImage(photo, sizes) {
+  if (!photo || !photo.src) return '';
+  const sources = (photo.variants || []).length ? [...photo.variants, { width: photo.width, src: photo.src }] : [];
+  return html`<link rel="preload" as="image" href="${photo.src}" ${sources.length ? html`imagesrcset="${sources.map(s => `${s.src} ${s.width}w`).join(', ')}" imagesizes="${sizes}"` : ''} fetchpriority="high">`;
+}
+
 /**
  * Gabarit commun.
- * bare : page sans en-tête ni pied de page du site (espace salon).
+ *   bare    : page sans en-tête ni pied de page du site (espace salon) ;
+ *   crumb   : nom de la page dans le fil d'Ariane des moteurs de recherche ;
+ *   catalog : joindre la carte des prestations aux données structurées ;
+ *   preload : { photo, sizes } de la grande image à charger en priorité.
  */
 function layout(site, {
   title, description, body, bodyClass = '', styles = [], scripts = [],
-  data = null, bare = false, noindex = false,
+  data = null, bare = false, noindex = false, crumb = '', catalog = false, preload = null,
 }) {
   const { config, path } = site;
-  const fullTitle = title ? `${title} · ${config.name}` : `${config.name} · ${config.tagline} à ${config.address.city}`;
+  const asset = site.asset || (file => file);
+  const origin = site.origin || config.siteUrl;
+  // Sans titre propre (la une) : le métier et la ville d'abord, ce que tapent les clients.
+  const fullTitle = title ? `${title} · ${config.name}` : `${config.trade} à ${config.address.city} · ${config.name}`;
   const metaDescription = description || config.description;
-  const canonical = config.siteUrl ? `${config.siteUrl}${path === '/' ? '/' : path}` : '';
+  const url = `${origin}${path === '/' ? '/' : path}`;
+  const shareImage = config.shareImage ? `${origin}${config.shareImage}` : '';
 
   return html`<!doctype html>
 <html lang="fr">
@@ -177,26 +266,36 @@ function layout(site, {
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>${fullTitle}</title>
 <meta name="description" content="${metaDescription}">
-${noindex ? raw('<meta name="robots" content="noindex, nofollow">') : ''}
-${canonical ? html`<link rel="canonical" href="${canonical}">` : ''}
-<meta name="theme-color" content="#f8f1ea">
+${noindex ? raw('<meta name="robots" content="noindex, nofollow">') : raw('<meta name="robots" content="index, follow, max-image-preview:large">')}
+${noindex || !origin ? '' : html`<link rel="canonical" href="${url}">`}
+${config.seo.googleVerification ? html`<meta name="google-site-verification" content="${config.seo.googleVerification}">` : ''}
+${config.seo.bingVerification ? html`<meta name="msvalidate.01" content="${config.seo.bingVerification}">` : ''}
+<meta name="theme-color" content="#f5eee1">
 <meta name="color-scheme" content="only light">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="fr_FR">
 <meta property="og:site_name" content="${config.name}">
 <meta property="og:title" content="${fullTitle}">
 <meta property="og:description" content="${metaDescription}">
-${config.photos.hero ? html`<meta property="og:image" content="${config.photos.hero.src}${config.photos.hero.src.includes('unsplash') ? '?auto=format&fit=crop&w=1200&h=630&q=72' : ''}">` : ''}
-<link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/img/icone.png">
+${origin ? html`<meta property="og:url" content="${url}">` : ''}
+${shareImage ? html`<meta property="og:image" content="${shareImage}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="${config.name}, ${config.trade.toLowerCase()} à ${config.address.city}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="${shareImage}">` : raw('<meta name="twitter:card" content="summary">')}
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/img/icone-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="manifest" href="${bare ? '/salon.webmanifest' : '/site.webmanifest'}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+${preload ? preloadImage(preload.photo, preload.sizes) : ''}
 <link rel="stylesheet" href="${FONTS}">
-<link rel="stylesheet" href="/css/base.css">
-${styles.map(href => html`<link rel="stylesheet" href="${href}">`)}
-<script src="/js/boot.js"></script>
-${bare ? '' : html`<script type="application/ld+json">${jsonForScript(structuredData(config))}</script>`}
+<link rel="stylesheet" href="${asset('/css/base.css')}">
+${styles.map(href => html`<link rel="stylesheet" href="${asset(href)}">`)}
+<script src="${asset('/js/boot.js')}"></script>
+${bare || !origin ? '' : html`<script type="application/ld+json">${jsonForScript(structuredData({ ...site, origin }, { catalog, crumb }))}</script>`}
 </head>
 <body class="${bodyClass}">
 ${sprite}
@@ -204,10 +303,10 @@ ${sprite}
 ${bare ? '' : html`${intro(site)}<span class="scroll-progress" aria-hidden="true" data-scroll-progress></span>`}
 ${bare ? '' : header(site)}
 ${body}
-${bare ? '' : html`${footer(site)}${dock(site)}`}
+${bare ? '' : html`${footer(site)}${dock(site)}${cookieNotice()}`}
 ${data ? html`<script type="application/json" id="page-data">${jsonForScript(data)}</script>` : ''}
-${bare ? '' : raw('<script type="module" src="/js/site.js"></script>')}
-${scripts.map(src => html`<script type="module" src="${src}"></script>`)}
+${bare ? '' : html`<script type="module" src="${asset('/js/site.js')}"></script>`}
+${scripts.map(src => html`<script type="module" src="${asset(src)}"></script>`)}
 </body>
 </html>`;
 }

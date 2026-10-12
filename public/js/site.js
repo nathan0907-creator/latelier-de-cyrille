@@ -402,12 +402,68 @@ function initNextSlot() {
 
 // ── Carte Google Maps : chargée seulement à la demande du visiteur ───────
 
+// ── Cookies ───────────────────────────────────────────────────────────────
+// Le site n'en dépose aucun pour suivre ses visiteurs. Le seul choix à faire porte sur le plan
+// Google Maps ; il est gardé six mois dans le navigateur (rien n'est envoyé au serveur) et se
+// modifie depuis le pied de page.
+
+const CONSENT_KEY = 'cookies';
+const CONSENT_MS = 183 * 86_400_000;
+
+function readConsent() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CONSENT_KEY) || 'null');
+    if (saved && (saved.choice === 'oui' || saved.choice === 'non') && Date.now() - saved.at < CONSENT_MS) return saved.choice;
+  } catch {
+    // Stockage indisponible ou valeur illisible : la question sera reposée.
+  }
+  return '';
+}
+
+function initCookies() {
+  const notice = document.querySelector('[data-cookies]');
+  if (!notice) return;
+
+  const show = on => {
+    notice.hidden = !on;
+    root.classList.toggle('cookies-on', on);
+  };
+  const choose = choice => {
+    try {
+      localStorage.setItem(CONSENT_KEY, JSON.stringify({ choice, at: Date.now() }));
+    } catch {
+      // Navigation privée : le choix vaut pour cette page.
+    }
+    show(false);
+    document.dispatchEvent(new CustomEvent('cookies', { detail: choice }));
+  };
+
+  notice.addEventListener('click', event => {
+    const choice = event.target.closest('[data-cookies-choice]')?.dataset.cookiesChoice;
+    if (choice) choose(choice);
+  });
+  for (const opener of document.querySelectorAll('[data-cookies-open]')) {
+    opener.addEventListener('click', () => {
+      show(true);
+      notice.querySelector('button').focus();
+    });
+  }
+  // Affiché sans attendre : à la première visite, le rideau d'ouverture le recouvre puis le découvre.
+  if (!readConsent()) show(true);
+}
+
+// ── Plan Google Maps ──────────────────────────────────────────────────────
+// Il ne se charge que si les cookies ont été acceptés, ou d'un clic sur « Afficher le plan »
+// (qui vaut accord pour cette fois).
+
 function initMap() {
   const map = document.querySelector('[data-map]');
   if (!map) return;
-  const KEY = 'carte-google';
+  let loaded = false;
 
   const load = ({ focus = false } = {}) => {
+    if (loaded) return;
+    loaded = true;
     const iframe = document.createElement('iframe');
     iframe.src = map.dataset.src;
     iframe.title = map.dataset.title;
@@ -417,19 +473,13 @@ function initMap() {
     map.querySelector('.map-facade')?.remove();
     map.append(iframe);
     if (focus) iframe.focus();
-    try {
-      localStorage.setItem(KEY, 'oui');
-    } catch {
-      // Stockage indisponible (navigation privée) : le choix ne sera pas mémorisé.
-    }
   };
 
   map.querySelector('[data-map-load]')?.addEventListener('click', () => load({ focus: true }));
-  try {
-    if (localStorage.getItem(KEY) === 'oui') load();
-  } catch {
-    // Pas de stockage : la carte reste à la demande.
-  }
+  if (readConsent() === 'oui') load();
+  document.addEventListener('cookies', event => {
+    if (event.detail === 'oui') load();
+  });
 }
 
 // ── Démarrage ─────────────────────────────────────────────────────────────
@@ -445,13 +495,15 @@ initMagnetic();
 initCursor();
 initNextSlot();
 initMap();
+initCookies();
 
 // Le rideau d'ouverture (première page de la visite) : le journal est coupé en deux au bout
-// d'une seconde et demie. Les apparitions démarrent à ce moment-là, pour que la une entre
-// en scène pendant que les deux moitiés s'écartent.
+// d'une seconde et demie. Les apparitions démarrent un peu avant, sous le rideau : la une est
+// déjà en train d'entrer en scène quand les deux moitiés s'écartent, et la page n'attend pas
+// la fin du rideau pour s'afficher (c'est ce délai que mesurent les moteurs de recherche).
 const intro = document.querySelector('.intro');
 const introPlaying = root.classList.contains('intro-on') && Boolean(intro);
-setTimeout(initReveals, introPlaying ? 1450 : 0);
+setTimeout(initReveals, introPlaying ? 650 : 0);
 if (introPlaying) setTimeout(() => intro.remove(), 2800);
 
 window.__siteReady = true;

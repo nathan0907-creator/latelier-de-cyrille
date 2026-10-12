@@ -1,10 +1,15 @@
-Déposez ici les photos du salon (JPG, PNG, WebP ou AVIF).
+Déposez ici les photos du salon (WebP, JPG, PNG ou AVIF).
 
-Puis, dans salon.config.js, remplacez l'adresse de la photo provisoire par le chemin du fichier :
+Puis, dans salon.config.js, indiquez le chemin du fichier :
 
-    hero: { src: '/photos/coupe.jpg', alt: 'Brushing au salon', ratio: '4/3' },
+    hero: { src: '/photos/coupe.webp', alt: 'Brushing au salon', ratio: '4/3' },
 
 Conseils :
-- largeur de 1600 px environ, moins de 400 Ko par photo (le site se charge plus vite) ;
+- largeur de 1600 px environ, moins de 400 Ko par photo ;
 - « alt » décrit la photo en une phrase : il est lu aux personnes malvoyantes et par Google ;
-- « ratio » (galerie) : '4/5' portrait, '4/3' paysage, '1/1' carré.
+- « ratio » : '3/4' ou '4/5' portrait, '4/3' paysage, '1/1' carré.
+
+Versions réduites (facultatif, mais le site se charge bien plus vite sur téléphone) :
+à côté de coupe.webp, déposez coupe-480.webp, coupe-800.webp et coupe-1200.webp
+(la même photo, à 480, 800 et 1200 px de large). Le site les trouve tout seul et laisse
+le navigateur choisir la plus petite qui suffit à l'écran.

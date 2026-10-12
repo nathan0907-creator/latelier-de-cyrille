@@ -354,6 +354,7 @@ const TABS = [
   { key: 'day', label: 'Journée', icon: 'calendar' },
   { key: 'list', label: 'Tous les rendez-vous', icon: 'list' },
   { key: 'closures', label: 'Fermetures', icon: 'ban' },
+  { key: 'audience', label: 'Fréquentation', icon: 'eye' },
 ];
 
 function mountDashboard() {
@@ -412,6 +413,7 @@ const VIEWS = {
   day: { mount: mountDay, render: renderDay },
   list: { mount: mountList, render: renderList },
   closures: { mount: mountClosures, render: renderClosures },
+  audience: { mount: mountAudience, render: () => {} },
 };
 
 function setTab(tab) {
@@ -531,7 +533,7 @@ function timeline(date, ranges, bookings) {
   return h('div', { class: 'timeline' }, rows, layer);
 }
 
-/** Place (ou cache) le trait rouge de l'heure courante sur l'agenda d'aujourd'hui. */
+/** Place (ou cache) le trait doré de l'heure courante sur l'agenda d'aujourd'hui. */
 function placeNowLine() {
   const line = refs.nowLine;
   if (!line || !line.isConnected) return;
@@ -741,6 +743,60 @@ function renderClosures() {
   }));
 }
 
+// ── Vue « Fréquentation » ─────────────────────────────────────────────────
+// Les visites du site, comptées par le site lui-même : ni cookie, ni service extérieur.
+
+const PAGE_NAMES = {
+  '/': 'La une', '/prestations': 'La carte', '/galerie': 'En images', '/reservation': 'Prendre rendez-vous',
+  '/nous-trouver': 'Pratique', '/mentions-legales': 'Mentions légales', '/confidentialite': 'Confidentialité', '/conditions': "Conditions d'utilisation",
+};
+
+async function mountAudience() {
+  const body = h('div', { class: 'audience' }, h('p', { class: 'empty' }, 'Chargement…'));
+  refs.view.replaceChildren(
+    h('p', { class: 'view-lead' }, "Les visites du site sur les 30 derniers jours. Le site les compte lui-même, sans cookie : les robots, vos propres visites et les personnes qui refusent d'être suivies ne sont pas comptés."),
+    body);
+
+  let data;
+  try {
+    data = await call('/api/salon/stats?jours=30');
+  } catch (err) {
+    body.replaceChildren(h('p', { class: 'notice notice--error', role: 'alert' }, err.message));
+    return;
+  }
+  if (state.tab !== 'audience') return;
+
+  const { totals, devices } = data;
+  const most = Math.max(1, ...data.days.map(day => day.visitors));
+  const phones = devices.mobile + devices.desktop ? Math.round((devices.mobile / (devices.mobile + devices.desktop)) * 100) : 0;
+  const cards = [
+    { value: totals.visitors, label: 'Visiteurs' },
+    { value: totals.views, label: 'Pages vues' },
+    { value: totals.bookings, label: 'Réservations en ligne' },
+    { value: `${phones} %`, label: 'Sur téléphone' },
+  ];
+  const ranking = (title, items) => h('section', { class: 'audience-list' },
+    h('h2', { class: 'group-title' }, title),
+    items.length
+      ? h('ol', {}, items.map(item => h('li', {}, h('span', {}, PAGE_NAMES[item.name] || item.name), h('strong', {}, String(item.count)))))
+      : h('p', { class: 'empty' }, 'Aucune visite comptée pour le moment.'));
+
+  body.replaceChildren(
+    h('div', { class: 'stats' }, cards.map(card => h('div', { class: 'stat' }, h('strong', {}, String(card.value)), h('span', {}, card.label)))),
+    h('figure', { class: 'chart' },
+      h('figcaption', { class: 'group-title' }, 'Visiteurs par jour'),
+      h('div', { class: 'chart-bars', role: 'img', 'aria-label': `Visiteurs par jour depuis le ${formatLong(data.days[0].date)} : ${totals.visitors} au total.` },
+        data.days.map(day => {
+          const bar = h('span', { class: `chart-bar${day.visitors ? '' : ' is-empty'}`, title: `${capitalize(formatShort(day.date))} : ${plural(day.visitors, 'visiteur', 'visiteurs')}` });
+          bar.style.height = `${Math.max(2, (day.visitors / most) * 100)}%`;
+          return bar;
+        })),
+      h('p', { class: 'chart-axis' }, h('span', {}, capitalize(formatShort(data.days[0].date))), h('span', {}, "Aujourd'hui"))),
+    h('div', { class: 'audience-cols' },
+      ranking('Pages les plus vues', data.pages),
+      ranking("D'où viennent les visiteurs", data.sources)));
+}
+
 // ── Fenêtres ──────────────────────────────────────────────────────────────
 
 function closeSheets() {
@@ -856,7 +912,7 @@ function renderDetail({ focus = false } = {}) {
       row('Date', capitalize(formatLong(booking.date))),
       row('Heure', hoursLabel(booking)),
       row('Durée', durationLabel(booking.duration)),
-      row('À régler sur place', priceText(booking)),
+      row('Tarif', priceText(booking)),
       booking.phone ? row('Téléphone', h('a', { class: 'link', href: telHref(booking.phone) }, booking.phone)) : null,
       booking.note ? row('Message', booking.note) : null,
       row('Reçu le', `${received.toLocaleDateString('fr-FR')} à ${received.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`)),

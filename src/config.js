@@ -1,7 +1,9 @@
 'use strict';
 
+const fs = require('node:fs');
 const path = require('node:path');
 const { toMinutes } = require('./time');
+const { describePhoto } = require('./images');
 
 function fail(message) {
   throw new Error(`salon.config.js : ${message}`);
@@ -13,8 +15,11 @@ function loadConfig(raw = require('../salon.config.js'), env = process.env) {
 
   const booking = {
     slotStep: 30, minNoticeMinutes: 120, maxDaysAhead: 60, maxActivePerPhone: 3,
-    retentionDays: 365, paymentNote: '', ...raw.booking,
+    retentionDays: 365, appointmentOnly: '', noShow: '', reminders: [1440, 120], ...raw.booking,
   };
+  if (!Array.isArray(booking.reminders) || booking.reminders.some(m => !Number.isInteger(m) || m < 10)) {
+    fail('« booking.reminders » doit lister des délais en minutes (au moins 10).');
+  }
   if (!Number.isInteger(booking.slotStep) || booking.slotStep < 5) fail('« booking.slotStep » doit être un entier ≥ 5.');
 
   const hours = {};
@@ -70,7 +75,10 @@ function loadConfig(raw = require('../salon.config.js'), env = process.env) {
   const fullAddress = `${address.street}, ${address.postalCode} ${address.city}`.trim();
   const query = encodeURIComponent(address.mapsQuery || fullAddress);
 
-  const photos = { gallery: [], ...raw.photos };
+  const publicDir = path.join(__dirname, '..', 'public');
+  // Chaque photo locale reçoit ses dimensions et ses versions réduites (voir src/images.js).
+  const photos = Object.fromEntries(Object.entries({ gallery: [], ...raw.photos }).map(([key, value]) =>
+    [key, Array.isArray(value) ? value.map(photo => describePhoto(photo, publicDir)) : describePhoto(value, publicDir)]));
   const imageHosts = new Set();
   const collect = photo => {
     if (photo && /^https:\/\//.test(photo.src || '')) imageHosts.add(new URL(photo.src).origin);
@@ -83,6 +91,8 @@ function loadConfig(raw = require('../salon.config.js'), env = process.env) {
     name: raw.name.trim(),
     owner: raw.owner || '',
     tagline: raw.tagline || '',
+    // Le métier, tel qu'il s'écrit dans les titres lus par les moteurs de recherche.
+    trade: raw.tagline || 'Salon de coiffure',
     description: raw.description || '',
     siteUrl,
     contact: { phone: '', email: '', instagram: '', ...raw.contact },
@@ -103,6 +113,10 @@ function loadConfig(raw = require('../salon.config.js'), env = process.env) {
     featuredServices: (raw.featuredServices || []).map(id => services.find(s => s.id === id)).filter(Boolean),
     about: { title: '', paragraphs: [], ...raw.about },
     photos,
+    // Image montrée quand on partage le site (réseaux sociaux, messageries) : 1200 × 630.
+    shareImage: fs.existsSync(path.join(publicDir, 'img', 'partage.jpg')) ? '/img/partage.jpg' : '',
+    // Référencement : communes voisines, codes de vérification des moteurs de recherche.
+    seo: { nearby: [], googleVerification: '', bingVerification: '', ...raw.seo },
     imageHosts: [...imageHosts],
     legal: { company: raw.name, status: '', siret: '', publisher: '', host: '', ...raw.legal },
 
@@ -112,7 +126,7 @@ function loadConfig(raw = require('../salon.config.js'), env = process.env) {
     host: env.HOST || '0.0.0.0',
     trustProxy: env.TRUST_PROXY === '1',
     dataDir: path.resolve(env.DATA_DIR || path.join(__dirname, '..', 'data')),
-    publicDir: path.join(__dirname, '..', 'public'),
+    publicDir,
   });
 }
 

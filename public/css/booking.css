@@ -81,9 +81,9 @@
 }
 
 .stepper-item.is-done .stepper-num {
-  border-color: var(--red);
-  background: var(--red);
-  color: #fff;
+  border-color: var(--gold-bright);
+  background: var(--gold-bright);
+  color: var(--ink);
 }
 
 .stepper-bar {
@@ -94,7 +94,7 @@
 .stepper-bar span {
   display: block;
   height: 100%;
-  background: var(--red);
+  background: var(--gold);
   transform: scaleX(.3333);
   transform-origin: left;
   transition: transform .9s var(--ease-expo);
@@ -163,7 +163,7 @@
   }
 }
 
-/* ── Étape 1 : entourer une annonce ────────────────────────────────────── */
+/* ── Étape 1 : la prestation ───────────────────────────────────────────── */
 
 .ads-group {
   margin-top: .75rem;
@@ -175,19 +175,6 @@
   letter-spacing: .055em;
   line-height: 1.1;
   text-transform: uppercase;
-}
-
-.ads-group + .ads {
-  margin-top: -1.25rem;
-}
-
-.ads--pick .ad-foot span {
-  color: var(--muted);
-}
-
-/* L'annonce entourée garde son fond de surligneur */
-.ad[aria-pressed="true"] {
-  background: var(--marker);
 }
 
 /* ── Étape 2 : le calendrier ───────────────────────────────────────────── */
@@ -287,9 +274,9 @@
   }
 }
 
-/* Jour complet : barré d'un trait rouge */
+/* Jour complet : barré d'un trait doré */
 .day--full {
-  background: linear-gradient(to top right, transparent calc(50% - 1px), var(--red) calc(50% - 1px), var(--red) calc(50% + 1px), transparent calc(50% + 1px));
+  background: linear-gradient(to top right, transparent calc(50% - 1px), var(--gold) calc(50% - 1px), var(--gold) calc(50% + 1px), transparent calc(50% + 1px));
 }
 
 .day--today::after {
@@ -300,13 +287,13 @@
   width: .9rem;
   height: 2px;
   margin-left: -.45rem;
-  background: var(--red);
+  background: var(--gold);
 }
 
 .day[aria-pressed="true"] {
-  border-color: var(--red);
-  background: var(--red);
-  color: #fff;
+  border-color: var(--gold-bright);
+  background: var(--gold-bright);
+  color: var(--ink);
 }
 
 .day[aria-pressed="true"]::after {
@@ -342,7 +329,7 @@
 
 .legend-dot--full {
   border-color: var(--hair);
-  background: linear-gradient(to top right, transparent calc(50% - 1px), var(--red) calc(50% - 1px), var(--red) calc(50% + 1px), transparent calc(50% + 1px));
+  background: linear-gradient(to top right, transparent calc(50% - 1px), var(--gold) calc(50% - 1px), var(--gold) calc(50% + 1px), transparent calc(50% + 1px));
 }
 
 .legend-dot--closed {
@@ -426,7 +413,7 @@
 .coupon-cut .icon {
   width: 1.5rem;
   height: 1.5rem;
-  color: var(--red);
+  color: var(--gold);
 }
 
 /* Les champs se remplissent « sur la ligne », comme un coupon papier */
@@ -450,7 +437,7 @@
 .coupon .field input:focus-visible,
 .coupon .field textarea:focus-visible {
   border-bottom-style: solid;
-  border-bottom-color: var(--red);
+  border-bottom-color: var(--gold);
   background-color: var(--marker);
   box-shadow: none;
 }
@@ -464,17 +451,19 @@
 
 .pay-note {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: .75rem;
   padding: .75rem 1rem;
   background: var(--marker);
-  font-weight: 600;
+  font-weight: 400;
   line-height: 1.3;
 }
 
 .pay-note .icon {
   width: 1.4rem;
   height: 1.4rem;
+  flex: none;
+  margin-top: .1rem;
 }
 
 .legal-note {
@@ -503,8 +492,8 @@
   top: -.5rem;
   right: 0;
   padding: .3rem;
-  border: 3px solid var(--red);
-  color: var(--red);
+  border: 3px solid var(--gold);
+  color: var(--gold);
   opacity: .9;
   mix-blend-mode: multiply;
   rotate: -9deg;
@@ -513,7 +502,7 @@
 .done-stamp span {
   display: block;
   padding: .1rem .9rem .15rem;
-  border: 1px solid var(--red);
+  border: 1px solid var(--gold);
   font-family: var(--font-poster);
   font-size: clamp(2rem, 5.2vw, 3.1rem);
   font-weight: 400;
@@ -602,7 +591,7 @@
   padding: 1.5rem 1.2rem 1.2rem;
   border: 1px solid var(--ink);
   background: var(--white);
-  box-shadow: 0 1.4rem 2.2rem -1.6rem rgba(36, 26, 28, .5);
+  box-shadow: 0 1.4rem 2.2rem -1.6rem rgba(34, 28, 20, .5);
 }
 
 .summary::before {
@@ -614,7 +603,7 @@
   height: 1.5rem;
   margin-left: -2.5rem;
   background: var(--tape);
-  box-shadow: 0 1px 2px rgba(36, 26, 28, .18);
+  box-shadow: 0 1px 2px rgba(34, 28, 20, .18);
   rotate: -3deg;
 }
 
@@ -793,9 +782,9 @@
 }
 
 .prices--pick .service-card[aria-pressed="true"] {
-  border-color: var(--red);
-  background: var(--red);
-  color: #fff;
+  border-color: var(--gold-bright);
+  background: var(--gold-bright);
+  color: var(--ink);
 }
 
 @media (min-width: 46rem) {
@@ -804,4 +793,17 @@
     font-size: 1rem;
     font-weight: 700;
   }
+}
+
+/* ── Confirmation : le rappel par notification ─────────────────────────── */
+
+.btn[aria-pressed="true"] {
+  --bg: var(--gold-bright);
+  --fg: var(--ink);
+}
+
+.remind-note {
+  margin-top: -.5rem;
+  color: var(--muted);
+  font-size: 1rem;
 }

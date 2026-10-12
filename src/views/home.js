@@ -6,10 +6,13 @@ const { layout } = require('./layout');
 const { formatShort, formatLong, daysBetween } = require('../time');
 const {
   PAGES, picture, button, splitTitle, kicker, sectionBar, stamp, ticker, edition, capitalize, openBadge, hoursTable,
-  openDaysSentence, priceTable, telHref, closureWording, ratioClass,
+  openDaysSentence, priceTable, telHref, closureWording, ratioClass, houseRules,
 } = require('./components');
 
 const pageOf = path => PAGES.find(page => page.path === path);
+
+// Largeur occupée par la grande photo de la une, selon l'écran (sert aussi à la charger en priorité).
+const HERO_SIZES = '(min-width: 64rem) 34vw, 92vw';
 
 /** La une du journal. */
 function home(site) {
@@ -21,6 +24,7 @@ function home(site) {
   const city = config.address.city;
   // Le texte de présentation est facultatif (salon.config.js) : sans lui, la photo prend toute la place.
   const story = [config.about.title, ...config.about.paragraphs].filter(Boolean);
+  const { appointmentOnly, noShow } = config.booking;
 
   // Congés et fermetures à venir : annoncés en tête du bandeau (les deux prochaines périodes).
   const closures = (site.closures || []).slice(0, 2).map(closureWording);
@@ -29,12 +33,13 @@ function home(site) {
 
   const tickerItems = [
     ...closures.flatMap(notice => [notice.closed, notice.reopening]).filter(Boolean).map(text => html`<b>${text}</b>`),
+    appointmentOnly ? html`<b>${appointmentOnly}</b>` : '',
     next ? html`Prochain créneau&nbsp;: <b data-next-slot-label>${next.label}</b>` : 'Réservation en ligne',
     'Créneaux à jour en direct',
-    'On règle sur place',
-    days ? `Ouvert ${days}` : 'Sur rendez-vous',
+    noShow.replace(/\.$/, ''),
+    days ? `Ouvert ${days}` : '',
     `${config.services.length} prestations à la carte`,
-  ];
+  ].filter(Boolean);
 
   const body = html`
 <main id="contenu" class="une">
@@ -55,19 +60,23 @@ function home(site) {
       </a>
     </div>
     <p class="masthead-line" data-reveal data-delay="450">
-      <span>${config.tagline}</span><span>Sur rendez-vous</span><span>Réservation en ligne, en direct</span><span>On règle sur place</span>
+      <span>${config.tagline}</span><span>Réservation en ligne, en direct</span>${days ? html`<span>Ouvert ${days}</span>` : ''}
     </p>
+    ${appointmentOnly || noShow ? html`<p class="house-rule" data-reveal data-delay="550">
+      ${appointmentOnly ? html`<strong>${appointmentOnly}</strong>` : ''}
+      ${noShow ? html`<span>${noShow}</span>` : ''}
+    </p>` : ''}
   </header>
 
   <section class="container lead ${story.length ? '' : photos.second ? 'lead--duo' : 'lead--photo'}" aria-labelledby="une-titre">
     <div class="lead-banner">
-      ${kicker('À la une')}
+      ${kicker(`À la une · ${config.trade} à ${city}`)}
       <h1 class="headline headline--xl" id="une-titre" data-reveal="lines" data-delay="150" data-fit>${splitTitle(config.headline)}</h1>
     </div>
 
-    <figure class="lead-photo ${ratioClass(photos.hero)}" data-reveal data-delay="250">
-      <div class="frame halftone" data-reveal="clip" data-delay="300">
-        <div class="frame-inner" data-scrub>${picture(photos.hero, { lazy: false, sizes: '(min-width: 64rem) 62vw, 92vw' })}</div>
+    <figure class="lead-photo ${ratioClass(photos.hero)}">
+      <div class="frame halftone" data-reveal="settle" data-delay="300">
+        <div class="frame-inner" data-scrub>${picture(photos.hero, { lazy: false, sizes: HERO_SIZES })}</div>
       </div>
       ${photos.hero && photos.hero.alt ? html`<figcaption>${photos.hero.alt}.</figcaption>` : ''}
     </figure>
@@ -77,9 +86,9 @@ function home(site) {
         <p><span class="dateline">${city} —</span> ${story[0]}</p>
         ${story.slice(1).map(text => html`<p>${text}</p>`)}
       </div>
-    </div>` : photos.second ? html`<figure class="lead-photo ${ratioClass(photos.second)}" data-reveal data-delay="350">
-      <div class="frame frame--whole" data-reveal="clip" data-delay="400">
-        <div class="frame-inner">${picture(photos.second, { sizes: '(min-width: 64rem) 36vw, 92vw' })}</div>
+    </div>` : photos.second ? html`<figure class="lead-photo ${ratioClass(photos.second)}">
+      <div class="frame frame--whole" data-reveal="settle" data-delay="400">
+        <div class="frame-inner">${picture(photos.second, { lazy: false, sizes: '(min-width: 64rem) 38vw, 92vw' })}</div>
       </div>
       ${photos.second.alt ? html`<figcaption>${photos.second.alt}.</figcaption>` : ''}
     </figure>` : ''}
@@ -96,7 +105,7 @@ function home(site) {
         <ul class="briefs">
           ${closures.map(notice => html`<li class="briefs-alert"><strong>Fermeture.</strong> ${capitalize(notice.closed.replace(/^Fermé /, ''))}.${notice.reopening ? ` ${notice.reopening}.` : ''}</li>`)}
           ${days ? html`<li><strong>Ouverture.</strong> ${capitalize(days)}.</li>` : ''}
-          <li><strong>Règlement.</strong> ${config.booking.paymentNote}</li>
+          ${appointmentOnly || noShow ? html`<li>${appointmentOnly ? html`<strong>${appointmentOnly}.</strong> ` : ''}${noShow}</li>` : ''}
           ${config.contact.phone ? html`<li><strong>Téléphone.</strong> <a class="link" href="${telHref(config.contact.phone)}">${config.contact.phone}</a></li>` : ''}
         </ul>
         ${stamp(`Sur rendez-vous · ${config.name} · `, { id: 'tampon-une', className: 'briefs-stamp', attrs: 'data-reveal="stamp" data-delay="1000"' })}
@@ -168,6 +177,7 @@ function home(site) {
             <dd><a class="link" href="${config.contact.messenger}" target="_blank" rel="noopener">Écrire au salon</a></dd>
           </div>` : ''}
         </dl>
+        ${houseRules(config)}
         <p class="actions">${button('Prendre rendez-vous', '/reservation', { variant: 'btn--accent' })}</p>
       </div>
     </div>
@@ -196,7 +206,15 @@ function home(site) {
   </section>
 </main>`;
 
-  return layout(site, { body, bodyClass: 'page-une', styles: ['/css/pages.css'] });
+  const nearby = config.seo.nearby.length ? `, près de ${config.seo.nearby[0]}` : '';
+  return layout(site, {
+    description: `${config.name}, ${config.trade.toLowerCase()} à ${city}${nearby} : coupes, colorations, balayages, lissages. ${appointmentOnly ? `${appointmentOnly}, r` : 'R'}éservation en ligne.`,
+    body,
+    bodyClass: 'page-une',
+    styles: ['/css/pages.css'],
+    catalog: true,
+    preload: { photo: photos.hero, sizes: HERO_SIZES },
+  });
 }
 
 module.exports = { home };

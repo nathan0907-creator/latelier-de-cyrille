@@ -1,13 +1,14 @@
 'use strict';
 
 const fs = require('node:fs');
+const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { loadConfig } = require('../src/config');
 const { createStore } = require('../src/store');
 
 /** Configuration de test : mardi → vendredi avec pause déjeuner, samedi en continu. */
-function testConfig(overrides = {}) {
+function testConfig(overrides = {}, env = {}) {
   return loadConfig({
     name: 'Salon de test',
     owner: 'Test',
@@ -34,7 +35,7 @@ function testConfig(overrides = {}) {
     }],
     photos: { hero: { src: 'https://images.unsplash.com/photo-test', alt: 'test' }, gallery: [] },
     ...overrides,
-  }, { DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'salon-test-')) });
+  }, { DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'salon-test-')), ...env });
 }
 
 function testStore(config) {
@@ -49,4 +50,47 @@ const SATURDAY = '2026-10-17';
 /** Horloge figée : lundi 12 octobre 2026 à 10h00. */
 const clockAt = (date = MONDAY, minutes = 600) => () => ({ date, minutes });
 
-module.exports = { testConfig, testStore, clockAt, TUESDAY, MONDAY, SATURDAY };
+/** Un navigateur ordinaire : les requêtes sans cet en-tête sont prises pour des robots et ne sont pas comptées. */
+const BROWSER = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36';
+
+/** Démarre le site sur un port libre et renvoie un petit client HTTP. */
+async function startSite({ overrides = {}, env = {} } = {}) {
+  const { createApp } = require('../src/app');
+  const config = testConfig(overrides, env);
+  const store = testStore(config);
+  const app = createApp({ config, store, clock: clockAt() });
+  const server = http.createServer(app.handle);
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+  const origin = `http://127.0.0.1:${port}`;
+
+  function request(method, target, { body, headers = {}, sameOrigin = true } = {}) {
+    return new Promise((resolve, reject) => {
+      const payload = body === undefined ? null : JSON.stringify(body);
+      const req = http.request(`${origin}${target}`, {
+        method,
+        headers: {
+          ...(payload && { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }),
+          ...(sameOrigin && method !== 'GET' && { Origin: origin }),
+          ...headers,
+        },
+      }, res => {
+        const chunks = [];
+        res.on('data', chunk => chunks.push(chunk));
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          let json = null;
+          try { json = JSON.parse(text); } catch { /* pas du JSON */ }
+          resolve({ status: res.statusCode, headers: res.headers, text, json });
+        });
+      });
+      req.on('error', reject);
+      req.end(payload);
+    });
+  }
+
+  const stop = () => new Promise(resolve => { app.close(); server.close(resolve); });
+  return { app, config, store, request, stop, origin };
+}
+
+module.exports = { testConfig, testStore, clockAt, startSite, BROWSER, TUESDAY, MONDAY, SATURDAY };

@@ -2,49 +2,10 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const http = require('node:http');
 const crypto = require('node:crypto');
-const { createApp } = require('../src/app');
-const { testConfig, testStore, clockAt, TUESDAY } = require('./helpers');
+const { startSite, TUESDAY } = require('./helpers');
 
-/** Démarre le site sur un port libre et renvoie un petit client HTTP. */
-async function start() {
-  const config = testConfig();
-  const store = testStore(config);
-  const app = createApp({ config, store, clock: clockAt() });
-  const server = http.createServer(app.handle);
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address();
-  const origin = `http://127.0.0.1:${port}`;
-
-  function request(method, path, { body, headers = {}, sameOrigin = true } = {}) {
-    return new Promise((resolve, reject) => {
-      const payload = body === undefined ? null : JSON.stringify(body);
-      const req = http.request(`${origin}${path}`, {
-        method,
-        headers: {
-          ...(payload && { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }),
-          ...(sameOrigin && method !== 'GET' && { Origin: origin }),
-          ...headers,
-        },
-      }, res => {
-        const chunks = [];
-        res.on('data', chunk => chunks.push(chunk));
-        res.on('end', () => {
-          const text = Buffer.concat(chunks).toString('utf8');
-          let json = null;
-          try { json = JSON.parse(text); } catch { /* pas du JSON */ }
-          resolve({ status: res.statusCode, headers: res.headers, text, json });
-        });
-      });
-      req.on('error', reject);
-      req.end(payload);
-    });
-  }
-
-  const stop = () => new Promise(resolve => { app.close(); server.close(resolve); });
-  return { app, store, request, stop, origin };
-}
+const start = () => startSite();
 
 const booking = (extra = {}) => ({ serviceId: 'court', date: TUESDAY, time: '10:00', name: 'Léa Dupont', phone: '0612345678', ...extra });
 const sessionCookie = res => res.headers['set-cookie'][0].split(';')[0];

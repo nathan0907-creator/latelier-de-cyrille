@@ -108,7 +108,7 @@
 }
 
 .salon-live.is-off .dot {
-  background: var(--red-light);
+  background: var(--gold-bright);
   animation: none;
 }
 
@@ -243,8 +243,8 @@
 .count {
   min-width: 1.5rem;
   padding: .05rem .4rem;
-  background: var(--red);
-  color: #fff;
+  background: var(--gold-bright);
+  color: var(--ink);
   font-size: .86rem;
   font-weight: 700;
   letter-spacing: 0;
@@ -329,7 +329,7 @@
   display: grid;
   grid-template-columns: var(--gutter-w) minmax(0, 1fr);
   height: var(--row-h);
-  border-top: 1px dotted rgba(36, 26, 28, .16);
+  border-top: 1px dotted rgba(34, 28, 20, .16);
 }
 
 .timeline-row.is-hour {
@@ -341,7 +341,7 @@
 }
 
 .timeline-row.is-closed {
-  background: repeating-linear-gradient(135deg, rgba(36, 26, 28, .06) 0 6px, transparent 6px 12px);
+  background: repeating-linear-gradient(135deg, rgba(34, 28, 20, .06) 0 6px, transparent 6px 12px);
 }
 
 .timeline-time {
@@ -363,7 +363,7 @@
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--red);
+  color: var(--gold);
   transition: background-color .2s ease;
 }
 
@@ -424,7 +424,7 @@
 }
 
 .block--pending {
-  border-color: var(--red);
+  border-color: var(--gold);
   background: #fbe6e9;
 }
 
@@ -461,7 +461,7 @@
   position: absolute;
   right: 0;
   left: 0;
-  border-top: 2px solid var(--red);
+  border-top: 2px solid var(--gold);
 }
 
 .timeline-now span {
@@ -469,8 +469,8 @@
   top: -.75rem;
   left: -3.75rem;
   padding: .05rem .35rem;
-  background: var(--red);
-  color: #fff;
+  background: var(--gold-bright);
+  color: var(--ink);
   font-family: var(--font-label);
   font-size: .82rem;
   font-weight: 700;
@@ -577,7 +577,7 @@
 
 .group-title small {
   margin-left: .5rem;
-  color: var(--red);
+  color: var(--gold);
   font-family: var(--font-label);
   font-size: .86rem;
   font-weight: 600;
@@ -701,7 +701,7 @@
 }
 
 .sheet::backdrop {
-  background: rgba(36, 26, 28, .6);
+  background: rgba(34, 28, 20, .6);
 }
 
 .sheet-head {
@@ -818,7 +818,7 @@
   display: grid;
   gap: .2rem;
   padding: .9rem 1.1rem;
-  border-left: 5px solid var(--red-light);
+  border-left: 5px solid var(--gold-bright);
   background: var(--ink);
   color: var(--paper);
   box-shadow: 0 1.2rem 2.4rem -1.2rem rgba(0, 0, 0, .6);
@@ -843,7 +843,7 @@
   align-items: center;
   min-height: 2.75rem;
   margin-bottom: -.5rem;
-  text-decoration-color: var(--red-light);
+  text-decoration-color: var(--gold-bright);
 }
 
 .toast .link:hover {
@@ -877,8 +877,8 @@
 }
 
 @keyframes fresh {
-  0%, 30% { box-shadow: 0 0 0 4px var(--red); }
-  100% { box-shadow: 0 0 0 4px rgba(176, 42, 85, 0); }
+  0%, 30% { box-shadow: 0 0 0 4px var(--gold); }
+  100% { box-shadow: 0 0 0 4px rgba(127, 94, 16, 0); }
 }
 
 /* Fermetures : la colonne des dates est plus large (« Mar. 20 oct. » tient sur une ligne). */
@@ -890,4 +890,71 @@
 
 .row--closure .row-time strong {
   white-space: nowrap;
+}
+
+/* ── Fréquentation ─────────────────────────────────────────────────────── */
+
+.audience {
+  display: grid;
+  gap: 1.75rem;
+}
+
+.chart-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 9rem;
+  margin-top: .75rem;
+  border-bottom: 1px solid var(--ink);
+}
+
+.chart-bar {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--ink);
+  border-bottom: 0;
+  background: var(--gold-bright);
+}
+
+.chart-bar.is-empty {
+  border-color: var(--hair);
+  background: transparent;
+}
+
+.chart-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: .4rem;
+  color: var(--muted);
+  font-family: var(--font-label);
+  font-size: .9rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.audience-cols {
+  display: grid;
+  gap: 1.75rem;
+}
+
+@media (min-width: 46rem) {
+  .audience-cols {
+    grid-template-columns: 1fr 1fr;
+    gap: 2.5rem;
+  }
+}
+
+.audience-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: .55rem;
+  border-bottom: 1px dotted var(--hair);
+}
+
+.audience-list li span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

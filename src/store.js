@@ -26,18 +26,22 @@ function writeJsonAtomic(file, data) {
   }
 }
 
-/** Stockage du salon : rendez-vous, fermetures et compte de la coiffeuse, dans des fichiers JSON. */
+/** Stockage du salon : rendez-vous, fermetures, rappels et compte de la coiffeuse, dans des fichiers JSON. */
 function createStore(dataDir) {
   fs.mkdirSync(dataDir, { recursive: true });
   const files = {
     bookings: path.join(dataDir, 'rendez-vous.json'),
     closures: path.join(dataDir, 'fermetures.json'),
     admin: path.join(dataDir, 'compte.json'),
+    reminders: path.join(dataDir, 'rappels.json'),
+    stats: path.join(dataDir, 'frequentation.json'),
   };
   const state = {
     bookings: readJson(files.bookings, []),
     closures: readJson(files.closures, []),
     admin: readJson(files.admin, null),
+    reminders: readJson(files.reminders, { identity: null, list: [] }),
+    stats: readJson(files.stats, {}),
   };
   const save = key => writeJsonAtomic(files[key], state[key]);
 
@@ -103,6 +107,38 @@ function createStore(dataDir) {
         }
         return removed;
       },
+    },
+    /** Rappels par notification : les clés du serveur et les abonnements en attente. */
+    reminders: {
+      identity: () => state.reminders.identity,
+      setIdentity(identity) {
+        state.reminders.identity = identity;
+        save('reminders');
+      },
+      all: () => state.reminders.list,
+      /** Un abonnement par rendez-vous et par appareil : le nouveau remplace l'ancien. */
+      put(record) {
+        state.reminders.list = state.reminders.list.filter(r => r.bookingId !== record.bookingId || r.endpoint !== record.endpoint);
+        state.reminders.list.push(record);
+        save('reminders');
+        return record;
+      },
+      update(record, patch) {
+        Object.assign(record, patch);
+        save('reminders');
+        return record;
+      },
+      removeWhere(predicate) {
+        const before = state.reminders.list.length;
+        state.reminders.list = state.reminders.list.filter(r => !predicate(r));
+        if (state.reminders.list.length !== before) save('reminders');
+        return before - state.reminders.list.length;
+      },
+    },
+    /** Fréquentation : un compteur par jour (voir src/stats.js), modifié sur place puis enregistré. */
+    stats: {
+      days: () => state.stats,
+      save: () => save('stats'),
     },
     admin: {
       get: () => state.admin,

@@ -13,16 +13,26 @@ module.exports = {
   owner: 'Cyrille',
   tagline: 'Coiffeuse',
   description:
-    "L'atelier de Cyrille : coupes, brushings, colorations, balayages, ombrés, lissages. Réservation en ligne en direct, règlement sur place.",
+    "L'atelier de Cyrille, coiffeuse à Loison-sous-Lens : coupes, brushings, colorations, balayages, ombrés, lissages. Uniquement sur rendez-vous, réservation en ligne.",
 
   // Le gros titre de la une, ligne par ligne. Un mot entre _tirets bas_ est écrit en cursive
-  // framboise ; entre *étoiles*, en cursive multicolore. Sur grand écran, les lignes se suivent
+  // dorée ; entre *étoiles*, en cursive multicolore. Sur grand écran, les lignes se suivent
   // sur une seule ; sur téléphone, elles s'empilent. La taille s'ajuste toute seule.
   headline: ['Cyrille,', 'votre coiffeuse', '(presque)', '*magicienne*'],
 
   // Adresse publique du site une fois en ligne (ex. 'https://www.latelier-de-cyrille.fr').
   // Laissez vide tant que le site n'a pas de nom de domaine.
   siteUrl: '',
+
+  // Référencement (Google, Bing…).
+  seo: {
+    // Communes voisines d'où viennent aussi les clientes : elles sont citées aux moteurs de recherche.
+    nearby: ['Lens', 'Harnes', 'Noyelles-sous-Lens'],
+    // Une fois le site en ligne : codes donnés par Google Search Console et Bing Webmaster Tools
+    // (option « balise HTML »), pour prouver que le site est bien le vôtre.
+    googleVerification: '',
+    bingVerification: '',
+  },
 
   // Coordonnées. Laissez vide ('') ce que le salon n'utilise pas : la ligne disparaît du site.
   contact: {
@@ -64,7 +74,12 @@ module.exports = {
     maxDaysAhead: 60,      // réservation ouverte sur 60 jours
     maxActivePerPhone: 3,  // rendez-vous à venir autorisés par numéro de téléphone
     retentionDays: 365,    // les rendez-vous passés sont effacés après un an
-    paymentNote: 'On règle sur place, au salon, après la prestation.',
+    // Rappels par notification proposés au client : combien de minutes avant le rendez-vous.
+    reminders: [1440, 120], // la veille, puis 2 h avant
+    // Les règles du salon : rappelées à la une, au moment de réserver et dans la confirmation.
+    // Laissez vide ('') pour ne pas les afficher.
+    appointmentOnly: 'Uniquement sur rendez-vous',
+    noShow: 'Un seul rendez-vous non honoré et la personne ne sera pas reprise.',
   },
 
   // La carte du salon (tarifs relevés sur l'affichette de Cyrille).

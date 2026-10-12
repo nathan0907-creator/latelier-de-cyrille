@@ -1,7 +1,7 @@
 /* ==========================================================================
-   Atelier de Cyril — base
+   L'atelier de Cyrille — base
    Le site est une gazette de coiffure, façon magazine féminin d'autrefois :
-   papier crème, encre brune, une couleur d'accompagnement (framboise).
+   papier beige, encre brune, une couleur d'accompagnement (l'or).
    Titre en écriture d'enseigne, gros titres en capitales étroites relevées d'un mot
    en écriture, filets, encadrés, petites annonces, affichettes à languettes.
    Ce fichier : jetons, typographie, composants communs, en-tête, pied de page,
@@ -10,18 +10,20 @@
 
 :root {
   /* Couleurs */
-  --paper: #f8f1ea;
-  --paper-2: #f0e2d8;
-  --white: #fffaf5;
-  --ink: #241a1c;
-  --red: #b02a55;        /* la couleur d'accompagnement : framboise */
-  --red-light: #f39bb3;
-  --marker: #f6cfd4;      /* surligneur, rose poudré */
-  --tape: rgba(233, 196, 186, .82);
-  --text: #241a1c;
-  --muted: #6a5a58;
-  --muted-on-dark: #cdbfc0;
-  --hair: rgba(36, 26, 28, .28);   /* filet maigre */
+  --paper: #f5eee1;
+  --paper-2: #eadfc9;
+  --white: #fffbf2;
+  --ink: #221c14;
+  /* La couleur d'accompagnement : l'or, en trois encres. */
+  --gold: #7f5e10;          /* vieil or : textes et filets, lisible sur le papier */
+  --gold-bright: #d4af57;   /* or vif : aplats (boutons, étiquettes) et fonds sombres ; on écrit dessus à l'encre */
+  --gold-display: #9c7518;  /* or des très gros titres en écriture */
+  --marker: #f3e6bd;        /* surligneur doré */
+  --tape: rgba(214, 188, 128, .82);
+  --text: #221c14;
+  --muted: #675a49;
+  --muted-on-dark: #cfc4b0;
+  --hair: rgba(34, 28, 20, .28);   /* filet maigre */
   --ok: #1f6a45;
   --ok-soft: #dfeee4;
   --warn: #7a5008;
@@ -35,8 +37,8 @@
   --edge: var(--ink);
   --rule: var(--hair);
   --soft: var(--muted);
-  --accent-text: var(--red);
-  --focus: var(--red);
+  --accent-text: var(--gold);
+  --focus: var(--gold);
 
   /* Les familles du journal : des caractères de presse, pas des polices « de site » */
   --font-name: "Grand Hotel", "Brush Script MT", "Segoe Script", cursive;                    /* le titre, les mots en écriture */
@@ -64,10 +66,10 @@
 .salon-bar {
   --page-bg: var(--ink);
   --edge: var(--paper);
-  --rule: rgba(248, 241, 234, .3);
+  --rule: rgba(245, 238, 225, .3);
   --soft: var(--muted-on-dark);
-  --accent-text: var(--red-light);
-  --focus: var(--red-light);
+  --accent-text: var(--gold-bright);
+  --focus: var(--gold-bright);
 }
 
 /* ── Remise à zéro ─────────────────────────────────────────────────────── */
@@ -244,7 +246,7 @@ h1, h2, h3 {
 
 .headline em {
   font-style: normal;
-  color: var(--red);
+  color: var(--gold-display);
   font-family: var(--font-name);
   font-size: 1.1em;
   letter-spacing: 0;
@@ -272,7 +274,7 @@ h1, h2, h3 {
   display: inline-block;
   margin: -.2em -.12em -.36em;
   padding: .2em .12em .36em;
-  background-image: linear-gradient(100deg, #b02a55, #d4541a, #b8860b, #1f8a5b, #1f6fb5, #7a3bb0, #b02a55, #d4541a, #b8860b);
+  background-image: linear-gradient(100deg, #a8780a, #c44e12, #c2356b, #7a3bb0, #1f6fb5, #1f8a5b, #a8780a, #c44e12, #c2356b);
   background-size: 300% 100%;
   -webkit-background-clip: text;
   background-clip: text;
@@ -287,7 +289,7 @@ h1, h2, h3 {
 }
 
 .headline b {
-  color: var(--red);
+  color: var(--gold);
   font-weight: inherit;
 }
 
@@ -306,7 +308,7 @@ h1, h2, h3 {
 .headline--m { font-size: clamp(1.7rem, 3vw, 2.5rem); line-height: 1.08; }
 .headline--s { font-size: 1.6rem; line-height: 1.12; }
 
-/* Surtitre : « À LA UNE », précédé d'un pavé rouge */
+/* Surtitre : « À LA UNE », précédé d'un pavé doré */
 .kicker,
 .eyebrow {
   display: inline-flex;
@@ -358,7 +360,7 @@ h1, h2, h3 {
 }
 
 .folio span:nth-child(2) {
-  color: var(--red);
+  color: var(--gold);
 }
 
 /* Petit écran : la date du jour laisse la place au numéro de page et à la rubrique. */
@@ -465,7 +467,7 @@ figcaption span {
   gap: .4rem;
   min-height: 2.75rem;
   margin-block: -.6rem;
-  color: var(--red);
+  color: var(--gold);
   font-family: var(--font-label);
   font-size: 1rem;
   font-weight: 700;
@@ -703,9 +705,9 @@ figcaption span {
 }
 
 .btn--accent {
-  --bg: var(--red);
-  --bd: var(--red);
-  --fg: #fff;
+  --bg: var(--gold-bright);
+  --bd: var(--gold-bright);
+  --fg: var(--ink);
   --hover-bg: var(--ink);
   --hover-fg: var(--paper);
 }
@@ -774,7 +776,7 @@ figcaption span {
   place-items: center;
   width: clamp(5.75rem, 10vw, 7.75rem);
   aspect-ratio: 1;
-  color: var(--red);
+  color: var(--gold);
   text-decoration: none;
   rotate: var(--tilt, 0deg);
 }
@@ -806,9 +808,9 @@ figcaption span {
   stroke-width: 1.5;
 }
 
-/* Tampon cliquable : pastille rouge pleine, flèche au centre */
+/* Tampon cliquable : pastille dorée pleine, flèche au centre */
 .stamp--solid {
-  color: #fff;
+  color: var(--ink);
 }
 
 .stamp--solid::before {
@@ -816,7 +818,7 @@ figcaption span {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: var(--red);
+  background: var(--gold-bright);
   transition: scale .5s var(--ease-expo), background-color .25s ease;
 }
 
@@ -825,6 +827,27 @@ figcaption span {
   width: 1.8rem;
   height: 1.8rem;
   transition: transform .5s var(--ease-expo);
+}
+
+.stamp--solid:hover {
+  color: var(--paper);
+}
+
+/* L'or est réservé à la prise de rendez-vous : le tampon qui mène à la galerie est à l'encre. */
+.stamp--cta {
+  color: var(--paper);
+}
+
+.stamp--cta::before {
+  background: var(--ink);
+}
+
+.stamp--cta:hover {
+  color: var(--ink);
+}
+
+.stamp--cta:hover::before {
+  background: var(--gold-bright);
 }
 
 .stamp--solid:hover::before {
@@ -861,8 +884,8 @@ figcaption span {
   align-items: center;
   gap: .55rem;
   padding: .5rem 1rem .5rem var(--gutter);
-  background: var(--red);
-  color: #fff;
+  background: var(--gold-bright);
+  color: var(--ink);
   font-weight: 700;
   letter-spacing: .06em;
 }
@@ -872,7 +895,7 @@ figcaption span {
   width: .5rem;
   height: .5rem;
   border-radius: 50%;
-  background: #fff;
+  background: var(--ink);
   animation: blink 1.4s steps(2, jump-none) infinite;
 }
 
@@ -907,7 +930,7 @@ figcaption span {
   width: .4rem;
   height: .4rem;
   margin-top: -.2rem;
-  background: var(--red-light);
+  background: var(--gold-bright);
   transform: rotate(45deg);
 }
 
@@ -939,12 +962,12 @@ figcaption span {
   height: 1.5rem;
   margin-left: -2.75rem;
   background: var(--tape);
-  box-shadow: 0 1px 2px rgba(36, 26, 28, .18);
+  box-shadow: 0 1px 2px rgba(34, 28, 20, .18);
   rotate: 2deg;
 }
 
 .flyer-kicker {
-  color: var(--red);
+  color: var(--gold);
   font-family: var(--font-label);
   font-size: .95rem;
   font-weight: 700;
@@ -1027,10 +1050,10 @@ figcaption span {
   }
 }
 
-/* Languette choisie : détachée, en rouge */
+/* Languette choisie : détachée, dorée */
 .tab[aria-pressed="true"] {
-  background: var(--red);
-  color: #fff;
+  background: var(--gold-bright);
+  color: var(--ink);
   transform: rotate(-5deg) translateY(.7rem);
 }
 
@@ -1063,140 +1086,6 @@ figcaption span {
 /* Languettes vierges : tant qu'aucun jour n'est choisi */
 span.tab {
   cursor: default;
-}
-
-/* ── Petites annonces ──────────────────────────────────────────────────── */
-
-.ads {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr));
-  border-top: 1px solid var(--ink);
-  border-left: 1px solid var(--ink);
-}
-
-.ads > * {
-  border-right: 1px solid var(--ink);
-  border-bottom: 1px solid var(--ink);
-}
-
-.ad {
-  position: relative;
-  display: grid;
-  align-content: start;
-  gap: .4rem;
-  width: 100%;
-  height: 100%;
-  padding: .9rem 1rem 1rem;
-  background: transparent;
-  color: var(--ink);
-  font: inherit;
-  text-align: left;
-  text-decoration: none;
-  cursor: pointer;
-  transition: background-color .25s ease;
-}
-
-button.ad {
-  border-top: 0;
-  border-left: 0;
-  border-radius: 0;
-}
-
-.ad-ref {
-  color: var(--muted);
-  font-family: var(--font-label);
-  font-size: .86rem;
-  font-weight: 600;
-  letter-spacing: .055em;
-  text-transform: uppercase;
-}
-
-.ad-title {
-  font-family: var(--font-head);
-  font-size: 1.6rem;
-  font-weight: 700;
-  letter-spacing: -.01em;
-  line-height: 1.05;
-}
-
-.ad-text {
-  font-size: .98rem;
-  line-height: 1.35;
-}
-
-.ad-foot {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-top: .45rem;
-  padding-top: .5rem;
-  border-top: 1px dotted var(--hair);
-  font-family: var(--font-label);
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-}
-
-.ad-foot b {
-  font-family: var(--font-head);
-  font-size: 1.45rem;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.ad-foot .icon {
-  display: inline-block;
-  vertical-align: -.18em;
-  transition: transform .4s var(--ease-out);
-}
-
-@media (hover: hover) {
-  .ad:hover {
-    background: var(--marker);
-  }
-
-  .ad:hover .ad-foot .icon {
-    transform: translateX(4px);
-  }
-}
-
-.ad:focus-visible {
-  outline-offset: -4px;
-}
-
-/* Le trait de stylo rouge qui entoure l'annonce choisie */
-.pen {
-  position: absolute;
-  inset: -.3rem -.4rem;
-  width: calc(100% + .8rem);
-  height: calc(100% + .6rem);
-  max-width: none;
-  overflow: visible;
-  pointer-events: none;
-}
-
-.pen path {
-  fill: none;
-  stroke: var(--red);
-  stroke-width: 3.5;
-  stroke-linecap: round;
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  opacity: 0; /* sans quoi le bout arrondi du trait laisse un point rouge sur chaque annonce */
-  transition: stroke-dashoffset .25s ease, opacity .01s linear .25s;
-}
-
-.ad[aria-pressed="true"] {
-  z-index: 1;
-}
-
-.ad[aria-pressed="true"] .pen path {
-  stroke-dashoffset: 0;
-  opacity: 1;
-  transition: stroke-dashoffset .6s var(--ease-in-out);
 }
 
 /* ── Pastilles « en direct » ───────────────────────────────────────────── */
@@ -1237,7 +1126,7 @@ button.ad {
 }
 
 .open-badge.is-closed .dot {
-  background: var(--red);
+  background: var(--gold);
   animation: none;
 }
 
@@ -1392,7 +1281,7 @@ button.ad {
   width: 1.5rem;
   height: 1.5rem;
   border: 2px solid var(--hair);
-  border-top-color: var(--red);
+  border-top-color: var(--gold);
   border-radius: 50%;
   animation: spin .9s linear infinite;
 }
@@ -1511,7 +1400,7 @@ img.is-missing {
 
 /* Numéro de page devant chaque rubrique */
 .nav-num {
-  color: var(--red);
+  color: var(--gold);
   font-family: var(--font-poster);
   font-size: 1.15rem;
   font-style: normal;
@@ -1545,7 +1434,7 @@ img.is-missing {
   margin-left: clamp(.25rem, 1.5vw, 1.25rem);
 }
 
-/* Grand écran : la rubrique « Prendre rendez-vous » est elle-même le bouton rouge. */
+/* Grand écran : la rubrique « Prendre rendez-vous » est elle-même le bouton doré. */
 @media (min-width: 62.01rem) {
   .header-cta {
     display: none;
@@ -1558,13 +1447,13 @@ img.is-missing {
 
   .site-nav li a.nav-book {
     padding: 0 .95rem;
-    background: var(--red);
-    color: #fff;
+    background: var(--gold-bright);
+    color: var(--ink);
     transition: background-color .25s ease;
   }
 
   .site-nav li a.nav-book .nav-num {
-    color: #fff;
+    color: var(--ink);
   }
 
   .site-nav li a.nav-book::after {
@@ -1572,8 +1461,11 @@ img.is-missing {
   }
 
   .site-nav li a.nav-book:hover,
-  .site-nav li a.nav-book[aria-current="page"] {
+  .site-nav li a.nav-book[aria-current="page"],
+  .site-nav li a.nav-book:hover .nav-num,
+  .site-nav li a.nav-book[aria-current="page"] .nav-num {
     background: var(--ink);
+    color: var(--paper);
   }
 }
 
@@ -1672,7 +1564,7 @@ img.is-missing {
   }
 
   .site-nav a[aria-current="page"] {
-    color: var(--red);
+    color: var(--gold);
   }
 
   .site-nav li {
@@ -1749,7 +1641,7 @@ img.is-missing {
 .pager-link small {
   display: block;
   margin-bottom: .35rem;
-  color: var(--red);
+  color: var(--gold);
   font-family: var(--font-label);
   font-size: .98rem;
   font-weight: 700;
@@ -1863,7 +1755,7 @@ img.is-missing {
 
 .ours-bottom a:hover {
   text-decoration: underline;
-  text-decoration-color: var(--red);
+  text-decoration-color: var(--gold);
   text-underline-offset: .25em;
 }
 
@@ -1883,7 +1775,7 @@ img.is-missing {
 
 /* L'état masqué ne s'applique que si JavaScript est actif (classe posée par boot.js).
    --d : délai propre à l'élément (data-delay, ou rang dans un groupe data-stagger). */
-.js [data-reveal]:not([data-reveal="lines"], [data-reveal="clip"], [data-reveal="stamp"]) {
+.js [data-reveal]:not([data-reveal="lines"], [data-reveal="clip"], [data-reveal="stamp"], [data-reveal="settle"]) {
   opacity: 0;
   transform: translate3d(0, 1.5rem, 0);
 }
@@ -1929,6 +1821,17 @@ img.is-missing {
   transition: scale 1.9s var(--ease-out) var(--d, 0s), filter .5s ease, transform 1s var(--ease-out);
 }
 
+/* Grandes photos de la une : jamais masquées. Ce sont les plus gros éléments de la page, ceux
+   dont les moteurs de recherche chronomètrent l'affichage : elles se contentent de dézoomer. */
+.js [data-reveal="settle"] img {
+  scale: 1.08;
+}
+
+.js [data-reveal="settle"].is-in img {
+  scale: 1;
+  transition: scale 1.9s var(--ease-out) var(--d, 0s), filter .5s ease, transform 1s var(--ease-out);
+}
+
 /* Tampons : ils claquent sur la page — apparition nette, grande échelle vers la taille juste. */
 .js [data-reveal="stamp"] {
   opacity: 0;
@@ -1956,6 +1859,7 @@ img.is-missing {
   clip-path: none !important;
 }
 
+.reveal-all [data-reveal="settle"] img,
 .reveal-all [data-reveal="clip"] img {
   scale: 1 !important;
 }
@@ -2046,7 +1950,7 @@ img.is-missing {
   content: "";
   position: absolute;
   inset: -1px 0 auto;
-  border-top: 2px dashed var(--red);
+  border-top: 2px dashed var(--gold);
   animation: intro-line .6s var(--ease-in-out) .7s both;
 }
 
@@ -2056,7 +1960,7 @@ img.is-missing {
   left: -2.3rem;
   width: 2.3rem;
   height: 2.3rem;
-  color: var(--red);
+  color: var(--gold);
   animation: intro-scissors .6s var(--ease-in-out) .7s both;
 }
 
@@ -2067,7 +1971,7 @@ img.is-missing {
   inset: 0 0 auto;
   z-index: 70;
   height: 3px;
-  background: var(--red);
+  background: var(--gold);
   transform: scaleX(0);
   transform-origin: left;
 }
@@ -2096,7 +2000,7 @@ img.is-missing {
 .cursor-ring {
   position: absolute;
   inset: 0;
-  border: 2px solid var(--red);
+  border: 2px solid var(--gold);
   border-radius: 50%;
   transform: scale(.14);
   transition: transform .45s var(--ease-expo), background-color .25s ease;
@@ -2107,13 +2011,13 @@ img.is-missing {
 }
 
 .cursor.is-label .cursor-ring {
-  background: var(--red);
+  background: var(--gold-bright);
   transform: scale(1);
 }
 
 .cursor-label {
   position: relative;
-  color: #fff;
+  color: var(--ink);
   font-family: var(--font-label);
   font-size: .86rem;
   font-weight: 700;
@@ -2256,6 +2160,7 @@ img.is-missing {
     clip-path: none !important;
   }
 
+  .js [data-reveal="settle"] img,
   .js [data-reveal="clip"] img {
     scale: 1 !important;
   }
@@ -2282,7 +2187,7 @@ img.is-missing {
 }
 
 /* ── Téléphone : la réservation à portée de pouce ──────────────────────── */
-/* Une barre rouge en bas de l'écran, avec le prochain créneau libre. Elle n'existe que sur
+/* Une barre dorée en bas de l'écran, avec le prochain créneau libre. Elle n'existe que sur
    petit écran et n'apparaît qu'une fois la page entamée (classe dock-on, posée par site.js). */
 
 .dock {
@@ -2301,8 +2206,8 @@ img.is-missing {
     min-height: 3.75rem;
     padding: .55rem var(--gutter) calc(.55rem + env(safe-area-inset-bottom));
     border-top: 1px solid var(--ink);
-    background: var(--red);
-    color: #fff;
+    background: var(--gold-bright);
+    color: var(--ink);
     text-decoration: none;
     transition: transform .5s var(--ease-expo), background-color .2s ease;
   }
@@ -2321,6 +2226,7 @@ img.is-missing {
 
   .dock:active {
     background: var(--ink);
+    color: var(--paper);
   }
 
   .dock-text {
@@ -2385,12 +2291,9 @@ label {
     color: var(--hover-fg);
   }
 
-  .ad:active,
-  .quote-row:active,
   .index-list a:active,
   .pager-link:active,
   .masthead-ear--slot:active,
-  .menu-item:active,
   .day--open:active,
   .stepper-item:not(:disabled, [aria-current="step"]):active,
   .tab:not(:disabled, [aria-pressed="true"]):active {
@@ -2398,11 +2301,131 @@ label {
   }
 
   .slot-box:active {
-    border-color: var(--red);
-    background: var(--red);
+    border-color: var(--gold);
+    background: var(--gold);
   }
 
   .site-nav li a:active {
-    color: var(--red);
+    color: var(--gold);
+  }
+}
+
+/* ── Les règles du salon ───────────────────────────────────────────────── */
+/* « Uniquement sur rendez-vous », et ce qu'il advient d'un rendez-vous manqué. */
+
+.rules {
+  display: flex;
+  align-items: flex-start;
+  gap: .7rem;
+  padding: .8rem 1rem;
+  border-left: 4px solid var(--gold-bright);
+  background: var(--marker);
+  line-height: 1.35;
+}
+
+.rules .icon {
+  flex: none;
+  width: 1.3rem;
+  height: 1.3rem;
+  margin-top: .12rem;
+}
+
+.rules strong {
+  font-family: var(--font-label);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.ours-rule {
+  color: var(--accent-text);
+  font-family: var(--font-label);
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+/* ── Avis sur les cookies ──────────────────────────────────────────────── */
+/* Un encadré discret en bas de l'écran ; « Refuser » et « Accepter » ont le même poids. */
+
+.cookies {
+  position: fixed;
+  inset: auto auto 1rem 1rem;
+  z-index: 60;
+  display: grid;
+  gap: .85rem;
+  width: min(27rem, calc(100vw - 2rem));
+  padding: 1rem 1.1rem 1.1rem;
+  border: 1px solid var(--ink);
+  border-top-width: 4px;
+  background: var(--white);
+  box-shadow: 0 1.4rem 2.2rem -1.6rem rgba(34, 28, 20, .55);
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.cookies[hidden] {
+  display: none;
+}
+
+.cookies-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .6rem .9rem;
+}
+
+.cookies-actions .link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+}
+
+.cookies .btn {
+  min-height: 2.75rem;
+  padding-inline: 1.1rem;
+  font-size: 1rem;
+}
+
+.ours-button {
+  min-height: 2.75rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.ours-button:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--gold);
+  text-underline-offset: .25em;
+}
+
+@media (max-width: 46rem) {
+  .cookies {
+    inset: auto 0 0;
+    width: auto;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+    border-width: 4px 0 0;
+  }
+
+  /* Tant que l'avis est ouvert, la barre de réservation lui laisse la place. */
+  .js.cookies-on .dock {
+    transform: translateY(105%);
+  }
+}
+
+/* Très petits téléphones (320 px) : le titre et le bouton « Sommaire » tiennent côte à côte. */
+@media (max-width: 22.4rem) {
+  .site-header .brand {
+    font-size: 1.8rem;
+  }
+
+  .menu-toggle {
+    gap: .5rem;
+    padding-inline: .65rem;
   }
 }

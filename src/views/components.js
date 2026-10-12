@@ -33,17 +33,21 @@ const UNSPLASH = 'https://images.unsplash.com/';
 const photoUrl = (photo, width) => (photo.src.startsWith(UNSPLASH) ? `${photo.src}?auto=format&fit=crop&w=${width}&q=72` : photo.src);
 
 /**
- * Image adaptative. Les photos provisoires (banque d'images) sont servies en plusieurs
- * largeurs ; une photo locale (/photos/…) est utilisée telle quelle.
+ * Image adaptative : le navigateur choisit la largeur qui suffit à l'écran. Les photos provisoires
+ * (banque d'images) sont demandées à la largeur voulue ; une photo locale propose ses versions
+ * réduites (public/photos/nom-800.webp…) quand elles existent, sinon elle est utilisée telle quelle.
+ * width et height réservent la place de l'image avant son chargement : la page ne saute pas.
  */
 function picture(photo, { sizes = '100vw', widths = [480, 800, 1200, 1600], lazy = true, className = '' } = {}) {
   if (!photo || !photo.src) return '';
   const remote = photo.src.startsWith(UNSPLASH);
-  const responsive = remote
-    ? raw(`srcset="${escapeHtml(widths.map(w => `${photoUrl(photo, w)} ${w}w`).join(', '))}" sizes="${escapeHtml(sizes)}"`)
-    : '';
-  return html`<img class="${className}" src="${remote ? photoUrl(photo, widths[Math.min(1, widths.length - 1)]) : photo.src}"
-    ${responsive} alt="${photo.alt || ''}" ${raw(lazy ? 'loading="lazy"' : 'fetchpriority="high"')} decoding="async">`;
+  const sources = remote ? widths.map(width => ({ width, src: photoUrl(photo, width) }))
+    : (photo.variants || []).length ? [...photo.variants, { width: photo.width, src: photo.src }] : [];
+  const fallback = sources.find(source => source.width >= 800) || sources.at(-1) || photo;
+  return html`<img class="${className}" src="${fallback.src}"
+    ${sources.length ? raw(`srcset="${escapeHtml(sources.map(s => `${s.src} ${s.width}w`).join(', '))}" sizes="${escapeHtml(sizes)}"`) : ''}
+    ${photo.width && photo.height ? raw(`width="${photo.width}" height="${photo.height}"`) : ''}
+    alt="${photo.alt || ''}" ${raw(lazy ? 'loading="lazy"' : 'fetchpriority="high"')} decoding="async">`;
 }
 
 /** Classe CSS du format d'une photo : « 4/5 » → « r-4-5 ». */
@@ -150,6 +154,16 @@ function closureWording(period) {
   };
 }
 
+/**
+ * Les règles du salon, dites d'un bloc : « Uniquement sur rendez-vous », puis ce qu'il advient
+ * d'un rendez-vous manqué. extra : une suite facultative (qui prévenir, par exemple).
+ */
+function houseRules(config, { className = 'rules', extra = '' } = {}) {
+  const { appointmentOnly, noShow } = config.booking;
+  if (!appointmentOnly && !noShow && !extra) return '';
+  return html`<p class="${className}">${icon('info')}<span>${appointmentOnly ? html`<strong>${appointmentOnly}.</strong> ` : ''}${noShow}${extra ? html` ${extra}` : ''}</span></p>`;
+}
+
 /** Surtitre d'article : « À LA UNE », « PRATIQUE »… */
 const kicker = text => html`<p class="kicker" data-reveal>${text}</p>`;
 
@@ -190,14 +204,6 @@ function ticker(items, label = 'Dernière minute') {
     </div>
   </div>`;
 }
-
-/**
- * Trait de stylo rouge autour d'une petite annonce : il se dessine quand l'annonce est choisie.
- * (Ellipse tracée à la main ; pathLength="1" permet de l'animer en CSS.)
- */
-const penCircle = raw(`<svg class="pen" viewBox="0 0 300 150" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-  <path pathLength="1" d="M34 78C22 38 96 10 168 12c66 2 116 24 112 62-4 40-74 62-146 60C72 132 22 112 26 74c3-32 62-56 128-58"/>
-</svg>`);
 
 // ── Boutons et titres ──────────────────────────────────────────────────────
 
@@ -261,5 +267,5 @@ function splitTitle(lines) {
 module.exports = {
   euros, priceLabel, LENGTHS, priceDetail, priceTable, durationLabel, capitalize, telHref, pad2, photoUrl, picture, ratioClass, fullSize,
   PAGES, edition, folio, weekHours, hoursTable, openDaysSentence, openStatusLabel, openBadge, closureWording,
-  kicker, sectionBar, stamp, ticker, penCircle, buttonLabel, button, splitTitle,
+  houseRules, kicker, sectionBar, stamp, ticker, buttonLabel, button, splitTitle,
 };

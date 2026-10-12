@@ -14,17 +14,25 @@ const WEEKDAY_LABELS = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
  *   1. On choisit une prestation dans le tableau des tarifs.
  *   2. On arrache une languette de l'affichette (le créneau).
  *   3. On remplit le coupon-réponse (les coordonnées).
+ * La confirmation propose d'ajouter le rendez-vous à son agenda et d'en recevoir le rappel
+ * par notification (voir src/reminders.js).
  */
 function booking(site) {
   const { config, now } = site;
   const phone = config.contact.phone;
   const page = PAGES.find(p => p.path === '/reservation');
+  const { noShow } = config.booking;
+  // La règle du rendez-vous manqué, et qui prévenir : dite avant d'envoyer, redite dans la confirmation.
+  const warning = html`<p class="pay-note">${icon('info')}<span>${noShow ? html`<strong>${noShow}</strong> ` : ''}Un empêchement&nbsp;? Prévenez le salon au <a class="link" href="${telHref(phone)}">${phone}</a>.</span></p>`;
 
   const data = {
     today: now.date,
     lastDate: lastBookableDate(config, now.date),
     services: config.services.map(({ id, name, duration, price, priceFrom }) => ({ id, name, duration, price, priceFrom })),
     salon: { name: config.name, address: config.address.full, phone },
+    // Rappels : les échéances (en minutes) et de quoi s'abonner aux notifications.
+    reminders: site.push ? site.push.leads : [],
+    push: site.push ? { key: site.push.key, worker: '/sw.js' } : null,
   };
 
   const body = html`
@@ -120,13 +128,13 @@ function booking(site) {
               <label for="website">Ne remplissez pas ce champ</label>
               <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
             </div>
-            <p class="pay-note">${icon('card')}<span>${config.booking.paymentNote}</span></p>
+            ${warning}
             <p class="notice notice--error" data-form-error role="alert" hidden></p>
             <div class="panel-actions">
               <button type="button" class="link" data-goto="2">${icon('chevron-left')} Changer de créneau</button>
               <button type="submit" class="btn btn--accent" data-submit><span data-submit-label>Envoyer le coupon</span>${icon('check')}</button>
             </div>
-            <p class="legal-note">Vos coordonnées servent uniquement à gérer ce rendez-vous. <a class="link" href="/mentions-legales#donnees">En savoir plus</a></p>
+            <p class="legal-note">Vos coordonnées servent uniquement à gérer ce rendez-vous. <a class="link" href="/confidentialite">En savoir plus</a></p>
           </form>
         </section>
 
@@ -136,12 +144,13 @@ function booking(site) {
           <h2 class="headline headline--l" id="etape-fin" tabindex="-1">Rendez-vous enregistré</h2>
           <p class="deck" data-done-text></p>
           <dl class="done-recap" data-done-recap></dl>
-          <p class="pay-note">${icon('card')}<span>${config.booking.paymentNote}</span></p>
+          ${warning}
           <div class="actions">
             <button type="button" class="btn" data-ics><span>Ajouter à mon agenda</span>${icon('download')}</button>
+            <button type="button" class="btn btn--outline" data-remind aria-pressed="false" hidden><span data-remind-label>Me le rappeler</span>${icon('bell')}</button>
             <a class="btn btn--outline" href="${config.maps.directions}" target="_blank" rel="noopener"><span>Itinéraire</span>${icon('arrow-up-right')}</a>
           </div>
-          <p class="done-help">Un empêchement&nbsp;? Appelez le salon au <a class="link" href="${telHref(phone)}">${phone}</a>.</p>
+          <p class="remind-note" data-remind-note role="status" hidden></p>
           <a class="link" href="/">${icon('chevron-left')} Revenir à la une</a>
         </section>
       </div>
@@ -154,7 +163,7 @@ function booking(site) {
           <div><dt>Heure</dt><dd data-sum="time">—</dd></div>
           <div><dt>Durée</dt><dd data-sum="duration">—</dd></div>
         </dl>
-        <p class="summary-total"><span>À régler sur place</span><strong data-sum="price">—</strong></p>
+        <p class="summary-total"><span>Tarif</span><strong data-sum="price">—</strong></p>
         <p class="summary-salon">${icon('pin')}<span>${config.address.full}</span></p>
       </aside>
     </div>
@@ -168,8 +177,9 @@ function booking(site) {
 </main>`;
 
   return layout(site, {
-    title: 'Prendre rendez-vous',
-    description: `Réservez en ligne chez ${config.name} : choisissez votre prestation et votre créneau, les disponibilités sont à jour en direct. Règlement sur place.`,
+    title: 'Prendre rendez-vous en ligne',
+    crumb: 'Prendre rendez-vous',
+    description: `Prenez rendez-vous en ligne chez ${config.name}, ${config.trade.toLowerCase()} à ${config.address.city} : prestation, jour et heure, créneaux à jour en direct.`,
     body,
     data,
     bodyClass: 'page-booking',

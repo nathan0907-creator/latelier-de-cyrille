@@ -1,7 +1,7 @@
 'use strict';
 
 const { home } = require('./home');
-const { services, gallery, find, legal, notFound } = require('./pages');
+const { services, gallery, find, legal, privacy, terms, notFound } = require('./pages');
 const { booking } = require('./booking');
 const { salon } = require('./salon');
 
@@ -13,6 +13,8 @@ const pages = {
   '/nous-trouver': find,
   '/reservation': booking,
   '/mentions-legales': legal,
+  '/confidentialite': privacy,
+  '/conditions': terms,
   '/salon': salon,
 };
 

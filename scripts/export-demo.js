@@ -8,9 +8,14 @@
  * sont calculés dans le navigateur avec les vraies règles du salon (src/time.js et src/availability.js),
  * et rien n'est enregistré nulle part. L'espace de la coiffeuse n'en fait pas partie.
  *
- *   node scripts/export-demo.js [dossier de sortie] [--base=/nom-du-depot]
+ *   node scripts/export-demo.js [dossier de sortie] [--base=/nom-du-depot] [--origin=https://compte.github.io]
  *
- * --base : le dossier sous lequel le site sera servi (« /nom-du-depot » sur GitHub Pages).
+ * --base   : le dossier sous lequel le site sera servi (« /nom-du-depot » sur GitHub Pages) ;
+ * --origin : l'adresse du serveur qui la publie, pour que l'image d'aperçu s'affiche quand on
+ *            partage le lien de la démonstration.
+ *
+ * Les rappels par notification et la mesure de fréquentation ont besoin du vrai serveur : ils
+ * n'existent pas dans la démonstration. Elle n'est pas proposée aux moteurs de recherche.
  */
 
 const fs = require('node:fs');
@@ -22,6 +27,7 @@ const root = path.join(__dirname, '..');
 const args = process.argv.slice(2);
 const out = path.resolve(args.find(arg => !arg.startsWith('--')) || path.join(root, '_site'));
 const base = (args.find(arg => arg.startsWith('--base=')) || '--base=').slice(7).replace(/\/+$/, '');
+const publicOrigin = (args.find(arg => arg.startsWith('--origin=')) || '--origin=').slice(9).replace(/\/+$/, '');
 
 // Les données du salon ne sont jamais lues : la démonstration démarre sur un dossier vide.
 const env = { ...process.env, DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'demo-')) };
@@ -32,7 +38,7 @@ const { createApp } = require('../src/app');
 const config = loadConfig(require('../salon.config.js'), env);
 
 // Les pages du site → les fichiers de la démonstration.
-const PAGES = ['prestations', 'galerie', 'reservation', 'nous-trouver', 'mentions-legales'];
+const PAGES = ['prestations', 'galerie', 'reservation', 'nous-trouver', 'mentions-legales', 'confidentialite', 'conditions'];
 const FILES = [
   ['/', 'index.html'],
   ...PAGES.map(page => [`/${page}`, `${page}/index.html`]),
@@ -41,12 +47,25 @@ const FILES = [
 
 const BANNER = 'Démonstration · les rendez-vous pris ici ne sont pas enregistrés';
 
-/** Fait pointer liens et fichiers vers le dossier de la démonstration, et y ajoute ce qui lui est propre. */
-function adapt(html) {
+/**
+ * Fait pointer liens et fichiers vers le dossier de la démonstration, et y ajoute ce qui lui est propre.
+ * localOrigin : l'adresse du serveur qui a fabriqué la page, à remplacer partout où elle apparaît.
+ */
+function adapt(html, localOrigin) {
   return html
     .replace(/<link rel="manifest"[^>]*>\n?/, '')
+    // Ce qui sert au référencement du vrai site n'a pas sa place ici : la démonstration reste
+    // hors des moteurs de recherche, pour que personne n'y prenne un rendez-vous qui n'existe pas.
+    .replace(/<meta name="robots"[^>]*>\n?/, '')
+    .replace(/<link rel="canonical"[^>]*>\n?/, '')
+    .replace(/<meta property="og:url"[^>]*>\n?/, '')
+    .replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>\n?/, '')
+    .split(localOrigin).join(`${publicOrigin}${base}`)
     // L'espace de la coiffeuse n'existe pas dans la démonstration.
-    .replace(/\s*<li><a href="\/salon">[^<]*<\/a><\/li>/, '')
+    .replace(/\s*<li><a href="\/salon"[^>]*>[^<]*<\/a><\/li>/, '')
+    // Photos en plusieurs largeurs : chaque adresse de la liste change de dossier.
+    .replace(/(\s(?:srcset|imagesrcset)=")([^"]*)"/g, (all, attribute, set) =>
+      `${attribute}${set.split(', ').map(candidate => (candidate.startsWith('/') ? base + candidate : candidate)).join(', ')}"`)
     .replace(/(\s(?:href|src|action|content|data-full|data-image)=")\/(?!\/)([^"]*)"/g, (all, attribute, rest) => {
       const [, file, tail] = /^([^?#]*)(.*)$/.exec(rest);
       const target = file === '' ? '' : PAGES.includes(file) ? `${file}/` : file;
@@ -305,12 +324,14 @@ async function main() {
   fs.cpSync(config.publicDir, out, { recursive: true });
   fs.rmSync(path.join(out, 'js', 'salon.js'), { force: true });
   fs.rmSync(path.join(out, 'css', 'salon.css'), { force: true });
+  // Pas de serveur, donc pas de rappels par notification.
+  fs.rmSync(path.join(out, 'sw.js'), { force: true });
 
   for (const [url, file] of FILES) {
     const response = await fetch(origin + url);
     const target = path.join(out, file);
     fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, adapt(await response.text()));
+    fs.writeFileSync(target, adapt(await response.text(), origin));
   }
 
   // L'image de secours est le seul fichier que les scripts du site appellent par son chemin.

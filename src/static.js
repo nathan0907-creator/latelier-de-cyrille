@@ -1,7 +1,9 @@
 'use strict';
 
 const fs = require('node:fs/promises');
+const fsSync = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { acceptedEncoding, compress, COMPRESSIBLE } = require('./http');
 
 const TYPES = {
@@ -19,12 +21,39 @@ const TYPES = {
   '.webmanifest': 'application/manifest+json',
 };
 
+/**
+ * Empreinte des styles et des scripts : elle change dès qu'un de ces fichiers change. Ajoutée aux
+ * adresses (« /css/base.css?v=… »), elle permet au navigateur de les garder un an sans jamais
+ * afficher une ancienne version. Recalculée au plus toutes les deux secondes.
+ */
+function createVersion(publicDir) {
+  let value = '';
+  let checked = 0;
+  return function version() {
+    if (value && Date.now() - checked < 2000) return value;
+    const hash = crypto.createHash('sha256');
+    for (const dir of ['css', 'js']) {
+      let names = [];
+      try {
+        names = fsSync.readdirSync(path.join(publicDir, dir)).sort();
+      } catch { /* dossier absent */ }
+      for (const name of names) {
+        const stat = fsSync.statSync(path.join(publicDir, dir, name));
+        hash.update(`${dir}/${name}:${stat.size}:${Math.round(stat.mtimeMs)};`);
+      }
+    }
+    checked = Date.now();
+    value = hash.digest('base64url').slice(0, 10);
+    return value;
+  };
+}
+
 /** Sert les fichiers de public/ : types connus uniquement, jamais hors du dossier, avec ETag et compression. */
 function createStatic(publicDir) {
   const root = path.resolve(publicDir);
   const compressed = new Map();
 
-  return async function serveStatic(req, res, pathname) {
+  return async function serveStatic(req, res, pathname, { versioned = false } = {}) {
     let relative;
     try {
       relative = decodeURIComponent(pathname);
@@ -51,8 +80,10 @@ function createStatic(publicDir) {
     const headers = {
       'Content-Type': type,
       ETag: etag,
-      // Styles et scripts : toujours revalidés (mise à jour immédiate). Images : un jour en cache.
-      'Cache-Control': /^(text|font)\//.test(type) ? 'no-cache' : 'public, max-age=86400',
+      // Adresse versionnée (« ?v=… ») : gardée un an. Sinon, styles et scripts sont toujours
+      // revalidés (mise à jour immédiate) et les images restent un jour en cache.
+      'Cache-Control': versioned ? 'public, max-age=31536000, immutable'
+        : /^(text|font)\//.test(type) ? 'no-cache' : 'public, max-age=86400',
       Vary: 'Accept-Encoding',
     };
     if (req.headers['if-none-match'] === etag) {
@@ -76,4 +107,4 @@ function createStatic(publicDir) {
   };
 }
 
-module.exports = { createStatic };
+module.exports = { createStatic, createVersion };

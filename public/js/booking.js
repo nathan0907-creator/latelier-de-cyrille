@@ -3,7 +3,7 @@
 // Les disponibilités viennent toujours du serveur et se mettent à jour en direct.
 
 import {
-  h, api, animate, reducedMotion, readPageData, debounce, addDays, addMonths, mondayIndex, daysInMonth,
+  h, api, ApiError, animate, reducedMotion, readPageData, debounce, addDays, addMonths, mondayIndex, daysInMonth,
   formatLong, formatMonth, capitalize, toMinutes, frTime, durationLabel, euros,
 } from './lib.js';
 
@@ -49,6 +49,9 @@ const el = {
   doneText: $('[data-done-text]'),
   doneRecap: $('[data-done-recap]'),
   bar: $('[data-booking-bar]'),
+  remind: $('[data-remind]'),
+  remindLabel: $('[data-remind-label]'),
+  remindNote: $('[data-remind-note]'),
 };
 
 const panel = step => $(`[data-step="${step}"]`);
@@ -415,7 +418,7 @@ el.form.addEventListener('submit', async event => {
   const fields = el.form.elements;
   setSubmitting(true);
   try {
-    const { booking } = await api('/api/bookings', {
+    const { booking, reminder } = await api('/api/bookings', {
       method: 'POST',
       body: {
         serviceId: state.service.id,
@@ -427,7 +430,7 @@ el.form.addEventListener('submit', async event => {
         website: fields.website.value,
       },
     });
-    showConfirmation(booking);
+    showConfirmation(booking, reminder);
   } catch (err) {
     if (err.status === 409) {
       // Quelqu'un a été plus rapide : retour au choix de l'horaire, disponibilités fraîches.
@@ -451,8 +454,9 @@ el.form.addEventListener('submit', async event => {
 
 // ── Confirmation ──────────────────────────────────────────────────────────
 
-function showConfirmation(booking) {
+function showConfirmation(booking, reminder) {
   state.confirmed = booking;
+  offerReminder(reminder);
   const firstName = booking.name.split(' ')[0];
   el.doneText.textContent = `Merci ${firstName}. À ${formatLong(booking.date)}, ${frTime(booking.time)}.`;
   const row = (label, value) => h('div', {}, h('dt', {}, label), h('dd', {}, value));
@@ -461,12 +465,73 @@ function showConfirmation(booking) {
     row('Date', capitalize(formatLong(booking.date))),
     row('Heure', `${frTime(booking.time)} – ${frTime(booking.end)}`),
     row('Durée', durationLabel(booking.duration)),
-    row('À régler sur place', priceText(booking)),
+    row('Tarif', priceText(booking)),
   );
   goTo('done');
 }
 
-/** Fichier .ics : ajoute le rendez-vous à l'agenda du téléphone ou de l'ordinateur. */
+// ── Rappel par notification ───────────────────────────────────────────────
+// Le navigateur s'abonne aux notifications du site ; le serveur enverra le rappel aux échéances
+// prévues (la veille, puis deux heures avant), même si le site est fermé sur l'appareil.
+
+const remind = { ref: null, endpoint: null, busy: false };
+const canRemind = Boolean(data.push?.key) && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const listing = new Intl.ListFormat('fr', { type: 'conjunction' });
+const REMIND_FALLBACK = 'Ajoutez plutôt le rendez-vous à votre agenda.';
+
+/** Le bouton n'apparaît que si l'appareil sait recevoir des notifications et qu'une échéance reste à venir. */
+function offerReminder(reminder) {
+  const offered = canRemind && Boolean(reminder?.ref) && reminder.when.length > 0;
+  remind.ref = offered ? reminder.ref : null;
+  el.remind.hidden = !offered;
+  el.remindNote.hidden = !offered;
+  if (offered) el.remindNote.textContent = `Une notification sur cet appareil, ${listing.format(reminder.when)}.`;
+}
+
+const fromBase64Url = text => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), char => char.charCodeAt(0));
+const toBase64Url = buffer => btoa(String.fromCharCode(...new Uint8Array(buffer))).replace(/[+]/g, '-').replace(/[/]/g, '_').replace(/=+$/, '');
+
+async function pushSubscription() {
+  const registration = await navigator.serviceWorker.register(data.push.worker);
+  await navigator.serviceWorker.ready;
+  let subscription = await registration.pushManager.getSubscription();
+  // Abonnement pris avec une ancienne clé du serveur : il ne servirait plus à rien, on le refait.
+  const key = subscription?.options?.applicationServerKey;
+  if (subscription && key && toBase64Url(key) !== data.push.key) {
+    await subscription.unsubscribe();
+    subscription = null;
+  }
+  return subscription || registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: fromBase64Url(data.push.key) });
+}
+
+async function toggleReminder() {
+  if (remind.busy || !remind.ref) return;
+  remind.busy = true;
+  el.remind.disabled = true;
+  try {
+    if (remind.endpoint) {
+      await api('/api/reminders', { method: 'DELETE', body: { ref: remind.ref, endpoint: remind.endpoint } });
+      remind.endpoint = null;
+      el.remindNote.textContent = 'Rappel retiré.';
+    } else if (await Notification.requestPermission() !== 'granted') {
+      el.remindNote.textContent = `Les notifications sont bloquées dans ce navigateur. ${REMIND_FALLBACK}`;
+    } else {
+      const subscription = await pushSubscription();
+      const { when } = await api('/api/reminders', { method: 'POST', body: { ref: remind.ref, subscription: subscription.toJSON() } });
+      remind.endpoint = subscription.endpoint;
+      el.remindNote.textContent = `Rappel activé : une notification ${listing.format(when)}.`;
+    }
+  } catch (err) {
+    el.remindNote.textContent = err instanceof ApiError && err.status ? err.message : `Le rappel n'a pas pu être activé sur cet appareil. ${REMIND_FALLBACK}`;
+  } finally {
+    remind.busy = false;
+    el.remind.disabled = false;
+    el.remind.setAttribute('aria-pressed', String(Boolean(remind.endpoint)));
+    el.remindLabel.textContent = remind.endpoint ? 'Rappel activé' : 'Me le rappeler';
+  }
+}
+
+/** Fichier .ics : ajoute le rendez-vous, avec ses rappels, à l'agenda du téléphone ou de l'ordinateur. */
 function downloadCalendar() {
   const booking = state.confirmed;
   if (!booking) return;
@@ -484,7 +549,11 @@ function downloadCalendar() {
     `DTEND:${stamp(booking.end)}`,
     `SUMMARY:${text(`${booking.serviceName} · ${data.salon.name}`)}`,
     `LOCATION:${text(data.salon.address)}`,
-    `DESCRIPTION:${text(`À régler sur place : ${priceText(booking)}. Un empêchement ? ${data.salon.phone}`)}`,
+    `DESCRIPTION:${text(`Tarif : ${priceText(booking)}. Un empêchement ? ${data.salon.phone}`)}`,
+    // L'agenda sonne aux mêmes échéances que les notifications du site.
+    ...(data.reminders || []).flatMap(minutes => [
+      'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${text(`${booking.serviceName} · ${data.salon.name}`)}`, `TRIGGER:-PT${minutes}M`, 'END:VALARM',
+    ]),
     'END:VEVENT',
     'END:VCALENDAR',
   ];
@@ -548,6 +617,7 @@ root.addEventListener('click', event => {
   else if (button === el.calNext) changeMonth(1);
   else if (button === el.proceed) goTo(3);
   else if (button.hasAttribute('data-ics')) downloadCalendar();
+  else if (button === el.remind) toggleReminder();
 });
 
 // Liens directs :

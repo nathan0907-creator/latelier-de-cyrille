@@ -5,7 +5,7 @@ const { icon } = require('./icons');
 const { layout } = require('./layout');
 const {
   PAGES, folio, picture, button, buttonLabel, splitTitle, kicker, stamp, openBadge, hoursTable,
-  priceTable, telHref, ratioClass, fullSize,
+  priceTable, telHref, ratioClass, fullSize, houseRules,
 } = require('./components');
 
 const pageOf = path => PAGES.find(page => page.path === path);
@@ -32,8 +32,7 @@ function services(site) {
     path: '/prestations',
     kick: 'Prestations et tarifs',
     title: ['La carte,', '_ligne par ligne_'],
-    extra: html`${config.priceNote ? html`<p class="notice-line" data-reveal>${icon('info')}<span>${config.priceNote}</span></p>` : ''}
-      <p class="notice-line" data-reveal>${icon('card')}<span>${config.booking.paymentNote}</span></p>`,
+    extra: config.priceNote ? html`<p class="notice-line" data-reveal>${icon('info')}<span>${config.priceNote}</span></p>` : '',
   })}
   <div class="container menu">
     ${config.categories.map((category, c) => html`<section class="menu-group" aria-labelledby="categorie-${c}">
@@ -41,14 +40,17 @@ function services(site) {
       ${priceTable(category.items, `${category.name} : tarifs`)}
     </section>`)}
   </div>
+  <div class="container">${houseRules(config)}</div>
   <aside class="container help-band" data-reveal>
     <p><strong>Une question&nbsp;?</strong> Appelez le <a class="link" href="${telHref(config.contact.phone)}">${config.contact.phone}</a>${config.contact.messenger ? html` ou écrivez sur <a class="link" href="${config.contact.messenger}" target="_blank" rel="noopener">Messenger</a>` : ''}.</p>
   </aside>
 </main>`;
 
   return layout(site, {
-    title: 'La carte : prestations et tarifs',
-    description: `Les prestations et les tarifs de ${config.name} : coupes, brushings, colorations, balayages, soins. Réservation en ligne, règlement sur place.`,
+    title: `Tarifs coiffure à ${config.address.city}`,
+    crumb: 'Prestations et tarifs',
+    catalog: true,
+    description: `Les prestations et les tarifs de ${config.name} : coupes, brushings, colorations, balayages, soins. Uniquement sur rendez-vous, réservation en ligne.`,
     body,
     styles: ['/css/pages.css'],
   });
@@ -88,8 +90,9 @@ function gallery(site) {
 </main>`;
 
   return layout(site, {
-    title: 'En images',
-    description: `Les réalisations de ${config.name} en photos : coupes, couleurs et ambiance du salon.`,
+    title: 'Coiffures avant / après en photos',
+    crumb: 'En images',
+    description: `Les réalisations de ${config.name}, ${config.trade.toLowerCase()} à ${config.address.city}, en photos : balayages, ombrés, colorations, avant et après.`,
     body,
     styles: ['/css/pages.css'],
     scripts: ['/js/gallery.js'],
@@ -129,10 +132,10 @@ function find(site) {
           <dt>Sur Facebook</dt>
           <dd>${contact.messenger ? html`<a class="link" href="${contact.messenger}" target="_blank" rel="noopener">Écrire sur Messenger</a>` : ''}${contact.messenger && contact.facebook ? html`<br>` : ''}${contact.facebook ? html`<a class="link" href="${contact.facebook}" target="_blank" rel="noopener">La page du salon</a>` : ''}</dd>
         </div>` : ''}
-        <div>
-          <dt>Règlement</dt>
-          <dd>${config.booking.paymentNote}</dd>
-        </div>
+        ${config.booking.appointmentOnly ? html`<div>
+          <dt>Accueil</dt>
+          <dd><strong>${config.booking.appointmentOnly}</strong></dd>
+        </div>` : ''}
       </dl>
       <div class="actions">
         ${button('Itinéraire', config.maps.directions, { iconName: 'arrow-up-right', external: true })}
@@ -150,7 +153,7 @@ function find(site) {
         </div>
         <div class="map-facade-copy">
           <p class="map-address">${address.full}</p>
-          <button type="button" class="btn btn--accent" data-map-load>${buttonLabel('Afficher le plan')}${icon('pin')}</button>
+          <button type="button" class="btn" data-map-load>${buttonLabel('Afficher le plan')}${icon('pin')}</button>
           <p class="map-note">Le plan est fourni par Google Maps. En l'affichant, vous acceptez que Google dépose ses cookies.</p>
           <a class="link" href="${config.maps.view}" target="_blank" rel="noopener">Ouvrir dans Google Maps</a>
         </div>
@@ -171,29 +174,44 @@ function find(site) {
 </main>`;
 
   return layout(site, {
-    title: 'Pratique : nous trouver',
-    description: `${config.name}, ${address.full}. Plan d'accès, itinéraire, horaires et contact.`,
+    title: "Adresse, horaires et plan d'accès",
+    crumb: 'Adresse et horaires',
+    description: `${config.name}, ${address.full}. Horaires d'ouverture, plan d'accès, itinéraire et téléphone. ${config.booking.appointmentOnly || 'Sur rendez-vous'}.`,
     body,
     styles: ['/css/pages.css'],
   });
 }
 
-// ── L'ours : mentions légales et confidentialité ───────────────────────────
-// (Dans la presse, « l'ours » est l'encadré qui dit qui publie le journal.)
+// ── Pages légales ──────────────────────────────────────────────────────────
+// L'ours (dans la presse, l'encadré qui dit qui publie le journal), la confidentialité, les
+// conditions d'utilisation. Elles se renvoient l'une à l'autre par un petit sommaire.
 
-function legal(site) {
-  const { config } = site;
-  const { legal: info, contact, address } = config;
-  const months = Math.round(config.booking.retentionDays / 30);
-  // Les moyens de joindre le salon, selon ce qui est renseigné : e-mail, téléphone, Messenger.
-  const reach = [
+const LEGAL_PAGES = [
+  { path: '/mentions-legales', label: 'Mentions légales' },
+  { path: '/confidentialite', label: 'Confidentialité et cookies' },
+  { path: '/conditions', label: "Conditions d'utilisation" },
+];
+
+const legalNav = current => html`<nav class="container legal-nav" aria-label="Pages légales">
+  <ul>${LEGAL_PAGES.map(page => html`<li><a href="${page.path}" ${page.path === current ? html`aria-current="page"` : ''}>${page.label}</a></li>`)}</ul>
+</nav>`;
+
+/** Les moyens de joindre le salon, selon ce qui est renseigné : e-mail, téléphone, Messenger. */
+function reachLinks(contact) {
+  return [
     contact.email ? html`<a class="link" href="mailto:${contact.email}">${contact.email}</a>` : '',
     contact.phone ? html`<a class="link" href="${telHref(contact.phone)}">${contact.phone}</a>` : '',
     contact.messenger ? html`<a class="link" href="${contact.messenger}" target="_blank" rel="noopener">Messenger</a>` : '',
   ].filter(Boolean).map((link, i) => html`${i ? ' · ' : ''}${link}`);
+}
+
+function legal(site) {
+  const { config } = site;
+  const { legal: info, contact, address } = config;
   const body = html`
 <main id="contenu" class="page">
-  ${pageHead(site, { path: '', kick: "L'ours", title: ['Mentions légales', '_et confidentialité_'] })}
+  ${pageHead(site, { path: '', kick: "L'ours", title: ['Mentions', '_légales_'] })}
+  ${legalNav('/mentions-legales')}
   <div class="container prose">
     <section>
       <h2>Éditeur du site</h2>
@@ -201,32 +219,137 @@ function legal(site) {
         ${address.full}<br>
         SIRET&nbsp;: ${info.siret}<br>
         Responsable de la publication&nbsp;: ${info.publisher}<br>
-        Contact&nbsp;: ${reach}</p>
+        Contact&nbsp;: ${reachLinks(contact)}</p>
     </section>
     <section>
       <h2>Hébergement</h2>
       <p>${info.host}</p>
     </section>
-    <section id="donnees">
-      <h2>Vos données personnelles</h2>
-      <p>Quand vous réservez en ligne, le salon enregistre votre nom, votre numéro de téléphone, la prestation, la date et l'heure du rendez-vous, ainsi que le message que vous choisissez d'ajouter.</p>
-      <p>Ces informations servent uniquement à organiser votre rendez-vous et à vous prévenir en cas d'imprévu. Elles ne sont ni vendues ni transmises à des tiers, et ne servent pas à de la publicité.</p>
-      <p>Elles sont effacées automatiquement ${months} mois après la date du rendez-vous. Vous pouvez demander à tout moment à les consulter, les corriger ou les supprimer en contactant le salon (${reach}). Si la réponse ne vous satisfait pas, vous pouvez saisir la CNIL (cnil.fr).</p>
-    </section>
-    <section>
-      <h2>Cookies et services tiers</h2>
-      <p>Ce site ne dépose aucun cookie publicitaire ni de mesure d'audience. Le seul cookie utilisé est celui qui garde la coiffeuse connectée à son espace privé.</p>
-      <p>Le plan Google Maps ne se charge que si vous cliquez sur «&nbsp;Afficher le plan&nbsp;»&nbsp;; Google peut alors déposer ses propres cookies. Les polices de caractères sont servies par Google Fonts, qui reçoit à cette occasion l'adresse IP de votre appareil.</p>
-    </section>
     <section>
       <h2>Crédits</h2>
       <p>Textes et photographies&nbsp;: ${info.company}, sauf mention contraire. Toute reproduction sans accord est interdite.</p>
+    </section>
+    <section>
+      <h2>Vos données et l'usage du site</h2>
+      <p>Ce que le salon fait de vos informations est expliqué dans la page <a class="link" href="/confidentialite">Confidentialité et cookies</a>. Les règles de la réservation en ligne sont dans les <a class="link" href="/conditions">Conditions d'utilisation</a>.</p>
+    </section>
+  </div>
+</main>`;
+
+  return layout(site, { title: 'Mentions légales', crumb: 'Mentions légales', description: `Mentions légales du site de ${config.name}, ${config.trade.toLowerCase()} à ${address.city} : éditeur, hébergeur, crédits.`, body, styles: ['/css/pages.css'] });
+}
+
+// ── Confidentialité (RGPD) et cookies ──────────────────────────────────────
+
+function privacy(site) {
+  const { config } = site;
+  const { legal: info, contact, address } = config;
+  const months = Math.round(config.booking.retentionDays / 30);
+  const reach = reachLinks(contact);
+  const leads = site.push ? new Intl.ListFormat('fr', { type: 'conjunction' }).format(site.push.labels) : '';
+  const body = html`
+<main id="contenu" class="page">
+  ${pageHead(site, { path: '', kick: 'Vos données', title: ['Confidentialité', '_et cookies_'] })}
+  ${legalNav('/confidentialite')}
+  <div class="container prose">
+    <section>
+      <h2>En deux mots</h2>
+      <p>Le salon ne garde que ce qu'il faut pour vous recevoir&nbsp;: votre nom, votre téléphone et votre rendez-vous. Rien n'est vendu ni transmis, aucune publicité, aucun traceur.</p>
+    </section>
+    <section>
+      <h2>Qui est responsable</h2>
+      <p>${info.company}, ${address.full}. Pour toute question sur vos données&nbsp;: ${reach}.</p>
+    </section>
+    <section id="donnees">
+      <h2>Ce qui est enregistré, et pourquoi</h2>
+      <h3>Quand vous réservez</h3>
+      <p>Votre nom, votre numéro de téléphone, la prestation, la date et l'heure du rendez-vous, et le message que vous choisissez d'ajouter. Ces informations servent uniquement à organiser le rendez-vous que vous demandez et à vous prévenir en cas d'imprévu (mesures prises à votre demande avant la prestation, article 6.1.b du RGPD).</p>
+      ${leads ? html`<h3>Si vous demandez un rappel</h3>
+      <p>Le rappel par notification est facultatif. Si vous l'activez, votre navigateur fournit au site une adresse technique qui permet de vous envoyer la notification (${leads}). Elle ne dit rien de vous, ne sert qu'à ce rappel et est effacée après le rendez-vous. Vous retirez votre accord quand vous voulez&nbsp;: en appuyant de nouveau sur le bouton, ou dans les réglages de notifications de votre navigateur.</p>` : ''}
+      <h3>Quand vous visitez le site</h3>
+      <p>Le site compte ses visites lui-même, sans cookie et sans service extérieur&nbsp;: nombre de pages vues par jour, site de provenance, téléphone ou ordinateur. Aucune adresse IP n'est conservée et rien ne permet de vous reconnaître d'une visite à l'autre. Si votre navigateur demande à ne pas être suivi («&nbsp;Do Not Track&nbsp;» ou «&nbsp;Global Privacy Control&nbsp;»), votre visite n'est pas comptée.</p>
+    </section>
+    <section>
+      <h2>Qui y a accès</h2>
+      <p>La coiffeuse, dans son espace protégé par mot de passe, et l'hébergeur du site, qui stocke les données sans les utiliser. Les rappels sont transportés, chiffrés, par le service de notification de votre navigateur (Google, Mozilla, Apple ou Microsoft selon l'appareil), qui ne peut pas les lire.</p>
+    </section>
+    <section>
+      <h2>Combien de temps</h2>
+      <p>Les rendez-vous sont effacés automatiquement ${months} mois après leur date. L'adresse de notification est effacée dès que le rendez-vous est passé. Les compteurs de visites, anonymes, sont gardés treize mois.</p>
+    </section>
+    <section>
+      <h2>Vos droits</h2>
+      <p>Vous pouvez à tout moment demander à consulter, corriger ou faire effacer vos informations, ou vous opposer à leur utilisation, en contactant le salon (${reach}). Si la réponse ne vous satisfait pas, vous pouvez saisir la CNIL, 3 place de Fontenoy, 75007 Paris (cnil.fr).</p>
+    </section>
+    <section id="cookies">
+      <h2>Cookies</h2>
+      <p>Ce site ne dépose aucun cookie publicitaire ni de mesure d'audience. Le seul cookie qu'il utilise est celui qui garde la coiffeuse connectée à son espace privé&nbsp;; il ne concerne pas les visiteurs.</p>
+      <p>Le plan de la page Pratique est fourni par Google Maps, qui dépose ses propres cookies. Il ne s'affiche donc que si vous l'acceptez. Votre choix est gardé six mois dans votre navigateur et se modifie quand vous voulez&nbsp;:</p>
+      <p><button type="button" class="btn btn--outline" data-cookies-open><span>Modifier mon choix</span></button></p>
+      <p>Les polices de caractères sont servies par Google Fonts, qui reçoit à cette occasion l'adresse IP de votre appareil, sans déposer de cookie.</p>
     </section>
   </div>
 </main>`;
 
   return layout(site, {
-    title: 'Mentions légales et confidentialité',
+    title: 'Confidentialité et cookies',
+    crumb: 'Confidentialité et cookies',
+    description: `Ce que ${config.name} fait de vos données : réservation, rappels, durée de conservation, vos droits (RGPD) et les cookies du site.`,
+    body,
+    styles: ['/css/pages.css'],
+  });
+}
+
+// ── Conditions d'utilisation (CGU) ─────────────────────────────────────────
+
+function terms(site) {
+  const { config } = site;
+  const { contact, booking: rules } = config;
+  const phone = contact.phone ? html`<a class="link" href="${telHref(contact.phone)}">${contact.phone}</a>` : 'téléphone';
+  const body = html`
+<main id="contenu" class="page">
+  ${pageHead(site, { path: '', kick: 'Règles du jeu', title: ['Conditions', "_d'utilisation_"] })}
+  ${legalNav('/conditions')}
+  <div class="container prose">
+    <section>
+      <h2>À quoi sert ce site</h2>
+      <p>Ce site présente ${config.name} (prestations, tarifs, photos, horaires, adresse) et permet de prendre rendez-vous en ligne. Son usage est gratuit. L'utiliser, c'est accepter les règles ci-dessous.</p>
+    </section>
+    <section id="rendez-vous">
+      <h2>La réservation</h2>
+      <p>${rules.appointmentOnly ? html`<strong>${rules.appointmentOnly}.</strong> ` : ''}Vous choisissez une prestation, un jour et une heure parmi les créneaux libres, puis vous laissez votre nom et votre numéro de téléphone. Le rendez-vous est enregistré quand la page de confirmation s'affiche.</p>
+      <p>Indiquez votre vrai nom et un numéro où vous joindre&nbsp;: le salon s'en sert pour vous prévenir en cas d'imprévu. Un même numéro peut avoir jusqu'à ${rules.maxActivePerPhone} rendez-vous à venir&nbsp;; au-delà, appelez le salon.</p>
+      <p>Le salon peut être amené à déplacer ou annuler un rendez-vous (maladie, fermeture exceptionnelle). Vous êtes alors prévenu par téléphone.</p>
+    </section>
+    <section id="absence">
+      <h2>Empêchement et rendez-vous manqué</h2>
+      <p>Un empêchement&nbsp;? Prévenez le salon le plus tôt possible au ${phone}${contact.messenger ? html` ou sur <a class="link" href="${contact.messenger}" target="_blank" rel="noopener">Messenger</a>` : ''}, pour que le créneau serve à quelqu'un d'autre.</p>
+      ${rules.noShow ? html`<p><strong>${rules.noShow}</strong></p>` : ''}
+    </section>
+    <section>
+      <h2>Les tarifs</h2>
+      <p>Les prix affichés sont en euros, toutes taxes comprises.${config.priceNote ? ` ${config.priceNote}` : ''} Le prix définitif dépend de la longueur et de la nature des cheveux&nbsp;: il vous est confirmé au salon avant de commencer.</p>
+    </section>
+    ${site.push ? html`<section>
+      <h2>Les rappels</h2>
+      <p>Le rappel par notification et le fichier d'agenda sont des aides. Leur bon fonctionnement dépend de votre appareil et de ses réglages&nbsp;: ils ne dispensent pas de noter votre rendez-vous.</p>
+    </section>` : ''}
+    <section>
+      <h2>Le site</h2>
+      <p>Le salon fait de son mieux pour que le site soit disponible et à jour, sans pouvoir le garantir à tout instant. En cas de panne, la réservation reste possible par téléphone.</p>
+      <p>Les textes et les photographies appartiennent à ${config.legal.company}&nbsp;; ils ne peuvent pas être réutilisés sans accord. Les liens vers d'autres sites (Facebook, Google Maps) sont donnés pour vous rendre service&nbsp;; le salon n'est pas responsable de leur contenu.</p>
+    </section>
+    <section>
+      <h2>Vos données, le droit applicable</h2>
+      <p>Ce que le salon fait de vos informations est expliqué dans la page <a class="link" href="/confidentialite">Confidentialité et cookies</a>. Ces conditions relèvent du droit français.</p>
+    </section>
+  </div>
+</main>`;
+
+  return layout(site, {
+    title: "Conditions d'utilisation",
+    crumb: "Conditions d'utilisation",
+    description: `Les règles du site de ${config.name} : réservation en ligne, empêchement et rendez-vous manqué, tarifs, rappels.`,
     body,
     styles: ['/css/pages.css'],
   });
@@ -251,4 +374,4 @@ function notFound(site) {
   return layout(site, { title: 'Page introuvable', body, styles: ['/css/pages.css'], noindex: true });
 }
 
-module.exports = { services, gallery, find, legal, notFound };
+module.exports = { services, gallery, find, legal, privacy, terms, notFound };

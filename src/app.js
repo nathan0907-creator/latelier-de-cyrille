@@ -3,24 +3,35 @@
 const { nowInZone, isValidDate, isValidMonth, addDays, daysBetween, formatShort, frTime } = require('./time');
 const availability = require('./availability');
 const { createBookings, cleanText } = require('./bookings');
+const { createReminders } = require('./reminders');
 const { createAuth } = require('./auth');
 const { createEvents } = require('./events');
 const { createLimiter } = require('./ratelimit');
-const { createStatic } = require('./static');
+const { createStatic, createVersion } = require('./static');
+const { createStats } = require('./stats');
 const { HttpError, clientIp, isSecure, sameOrigin, readJson, applySecurityHeaders, send, sendJson, sendHtml } = require('./http');
 const views = require('./views');
+
+const fs = require('node:fs');
+const path = require('node:path');
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function createApp({ config, store, clock = () => nowInZone(config.timezone) }) {
   const bookings = createBookings({ config, store, clock });
+  const reminders = createReminders({ config, store, clock });
   const auth = createAuth({ store });
   const events = createEvents();
   const serveStatic = createStatic(config.publicDir);
+  const assetVersion = createVersion(config.publicDir);
+  const stats = createStats({ store, clock });
 
   const limits = {
     api: createLimiter({ max: 300, windowMs: 60_000 }),
     booking: createLimiter({ max: 8, windowMs: 10 * 60_000 }),
+    // Toutes adresses confondues : un agenda ne se remplit pas de quarante demandes en une heure.
+    bookingGlobal: createLimiter({ max: 40, windowMs: 60 * 60_000 }),
+    reminder: createLimiter({ max: 20, windowMs: 10 * 60_000 }),
     login: createLimiter({ max: 5, windowMs: 15 * 60_000 }),
     loginGlobal: createLimiter({ max: 40, windowMs: 15 * 60_000 }),
   };
@@ -37,11 +48,25 @@ function createApp({ config, store, clock = () => nowInZone(config.timezone) }) 
     return { date: slot.date, time: slot.time, label: `${day} à ${frTime(slot.start)}` };
   }
 
-  function siteContext(pathname) {
+  /**
+   * Adresse publique du site : celle de salon.config.js une fois le site en ligne, sinon celle
+   * par laquelle le visiteur est arrivé (localhost, adresse du Wi-Fi…).
+   */
+  function originOf(req) {
+    if (config.siteUrl) return config.siteUrl;
+    const host = /^[a-z0-9.-]+(:\d{1,5})?$/i.test(req.headers.host || '') ? req.headers.host : `localhost:${config.port}`;
+    return `${isSecure(req, config.trustProxy) ? 'https' : 'http'}://${host}`;
+  }
+
+  function siteContext(pathname, req) {
     const state = snapshot();
+    const version = assetVersion();
     return {
       config,
       path: pathname,
+      origin: originOf(req),
+      // Adresse d'un style ou d'un script, avec son empreinte (voir createVersion).
+      asset: file => `${file}?v=${version}`,
       now: state.now,
       status: availability.openStatus(state),
       next: describeSlot(availability.nextSlot({ ...state, service: quickest }), state.now),
@@ -49,6 +74,8 @@ function createApp({ config, store, clock = () => nowInZone(config.timezone) }) 
       closures: availability.closurePeriods(state),
       // Seule la une affiche l'affichette aux languettes : inutile de calculer ces jours ailleurs.
       nextDays: pathname === '/' ? availability.nextOpenDays({ ...state, service: quickest }) : [],
+      // Rappels par notification : la clé publique du serveur et les échéances proposées.
+      push: { key: reminders.publicKey, leads: reminders.leads, labels: reminders.labels },
     };
   }
 
@@ -103,15 +130,29 @@ function createApp({ config, store, clock = () => nowInZone(config.timezone) }) 
     }
 
     if (route === 'POST /api/bookings') {
-      const limit = limits.booking.take(ip);
-      if (!limit.ok) return tooMany(limit, 'Trop de demandes de réservation. Réessayez dans quelques minutes ou appelez le salon.');
+      const limit = [limits.booking.take(ip), limits.bookingGlobal.take('*')].find(state => !state.ok);
+      if (limit) return tooMany(limit, 'Trop de demandes de réservation. Réessayez dans quelques minutes ou appelez le salon.');
       const body = await readJson(req);
       // Champ piège invisible : seuls les robots le remplissent.
       if (cleanText(body.website, 50)) return json(400, { error: 'Requête refusée.' });
       const result = bookings.create(body, { mode: 'public' });
       if (!result.ok) return reject(result);
       announce('created', result.booking);
-      return json(201, { booking: bookings.publicView(result.booking) });
+      stats.booking();
+      // « reminder » : la référence qui permet à ce client, et à lui seul, de demander un rappel.
+      return json(201, { booking: bookings.publicView(result.booking), reminder: reminders.refFor(result.booking) });
+    }
+
+    // Rappel par notification : le client qui vient de réserver l'active (ou le retire) sur son appareil.
+    if (route === 'POST /api/reminders' || route === 'DELETE /api/reminders') {
+      const limit = limits.reminder.take(ip);
+      if (!limit.ok) return tooMany(limit, 'Trop de demandes. Réessayez dans quelques minutes.');
+      const body = await readJson(req);
+      const result = method === 'POST'
+        ? reminders.subscribe(body.ref, body.subscription)
+        : reminders.unsubscribe(body.ref, String(body.endpoint || ''));
+      if (!result.ok) return reject(result);
+      return json(method === 'POST' ? 201 : 200, result);
     }
 
     // — Accès à l'espace salon —
@@ -169,6 +210,12 @@ function createApp({ config, store, clock = () => nowInZone(config.timezone) }) 
 
     if (route === 'GET /api/salon/events') return events.open('salon', req, res, { ip, sessionId: session.id });
 
+    // Fréquentation du site sur les 30 derniers jours (ou ?jours=7, 90…).
+    if (route === 'GET /api/salon/stats') {
+      const span = Math.min(366, Math.max(1, Number(searchParams.get('jours')) || 30));
+      return json(200, stats.summary(span));
+    }
+
     if (route === 'GET /api/salon/data') {
       const now = clock();
       return json(200, {
@@ -197,6 +244,7 @@ function createApp({ config, store, clock = () => nowInZone(config.timezone) }) 
     if (bookingRoute && method === 'DELETE') {
       const result = bookings.remove(bookingRoute[1]);
       if (!result.ok) return reject(result);
+      reminders.forget(result.booking.id);
       announce('deleted', result.booking);
       return json(200, { ok: true });
     }
@@ -235,10 +283,8 @@ function createApp({ config, store, clock = () => nowInZone(config.timezone) }) 
 
   // ── Pages ──────────────────────────────────────────────────────────────
 
-  function robots() {
-    const lines = ['User-agent: *', 'Disallow: /salon', 'Disallow: /api/'];
-    if (config.siteUrl) lines.push(`Sitemap: ${config.siteUrl}/sitemap.xml`);
-    return `${lines.join('\n')}\n`;
+  function robots(origin) {
+    return `${['User-agent: *', 'Allow: /', 'Disallow: /salon', 'Disallow: /api/', '', `Sitemap: ${origin}/sitemap.xml`].join('\n')}\n`;
   }
 
   /**
@@ -252,14 +298,27 @@ function createApp({ config, store, clock = () => nowInZone(config.timezone) }) 
       lang: 'fr',
       start_url: salon ? '/salon' : '/',
       display: 'standalone',
-      background_color: '#f8f1ea',
-      theme_color: '#f8f1ea',
-      icons: [{ src: '/img/icone.png', sizes: '256x256', type: 'image/png' }],
+      background_color: '#f5eee1',
+      theme_color: '#f5eee1',
+      icons: [
+        { src: '/img/icone-192.png', sizes: '192x192', type: 'image/png' },
+        { src: '/img/icone-512.png', sizes: '512x512', type: 'image/png' },
+        { src: '/img/icone-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      ],
     });
   }
 
-  function sitemap() {
-    const urls = views.publicPaths.map(p => `  <url><loc>${config.siteUrl}${p === '/' ? '/' : p}</loc></url>`).join('\n');
+  // Date de la dernière mise à jour du contenu : celle du fichier de configuration du salon.
+  const lastModified = (() => {
+    try {
+      return fs.statSync(path.join(__dirname, '..', 'salon.config.js')).mtime.toISOString().slice(0, 10);
+    } catch {
+      return clock().date;
+    }
+  })();
+
+  function sitemap(origin) {
+    const urls = views.publicPaths.map(p => `  <url><loc>${origin}${p === '/' ? '/' : p}</loc><lastmod>${lastModified}</lastmod></url>`).join('\n');
     return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
   }
 
@@ -272,19 +331,49 @@ function createApp({ config, store, clock = () => nowInZone(config.timezone) }) 
       res.writeHead(308, { Location: pathname.replace(/\/+$/, '') + url.search });
       return res.end();
     }
-    if (pathname === '/robots.txt') return send(req, res, 200, { 'Content-Type': 'text/plain; charset=utf-8' }, robots());
-    if (pathname === '/sitemap.xml' && config.siteUrl) return send(req, res, 200, { 'Content-Type': 'application/xml; charset=utf-8' }, sitemap());
+    if (pathname === '/robots.txt') return send(req, res, 200, { 'Content-Type': 'text/plain; charset=utf-8' }, robots(originOf(req)));
+    if (pathname === '/sitemap.xml') return send(req, res, 200, { 'Content-Type': 'application/xml; charset=utf-8' }, sitemap(originOf(req)));
     if (pathname === '/site.webmanifest' || pathname === '/salon.webmanifest') {
       return send(req, res, 200, { 'Content-Type': 'application/manifest+json; charset=utf-8' }, manifest(pathname === '/salon.webmanifest'));
     }
 
     const render = views.pages[pathname];
     if (render) {
-      const headers = pathname === '/salon' ? { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' } : {};
-      return sendHtml(req, res, 200, render(siteContext(pathname)), headers);
+      const salon = pathname === '/salon';
+      // Une visite du site (pas de l'espace salon, ni de la coiffeuse connectée) : on la compte.
+      if (!salon && req.method === 'GET' && !auth.readSession(req)) {
+        stats.view({
+          path: pathname,
+          referrer: req.headers.referer,
+          userAgent: req.headers['user-agent'],
+          ip: clientIp(req, config.trustProxy),
+          host: req.headers.host,
+          // « Ne pas me suivre » demandé par le navigateur, ou page préchargée sans être vue.
+          optOut: req.headers.dnt === '1' || req.headers['sec-gpc'] === '1' || /prefetch|prerender/.test(`${req.headers.purpose || ''}${req.headers['sec-purpose'] || ''}`),
+        });
+      }
+      const headers = salon ? { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' } : {};
+      return sendHtml(req, res, 200, render(siteContext(pathname, req)), headers);
     }
-    if (await serveStatic(req, res, pathname)) return undefined;
-    return sendHtml(req, res, 404, views.notFound(siteContext(pathname)));
+    if (await serveStatic(req, res, pathname, { versioned: url.searchParams.has('v') })) return undefined;
+    return sendHtml(req, res, 404, views.notFound(siteContext(pathname, req)), { 'X-Robots-Tag': 'noindex' });
+  }
+
+  /**
+   * En ligne (derrière le serveur frontal qui porte le certificat) : tout passe en HTTPS, et sur
+   * une seule adresse, celle de salon.config.js. Sans cela, « http:// » et « www. » feraient
+   * exister le site en double pour les moteurs de recherche.
+   */
+  function canonicalRedirect(req) {
+    if (!config.trustProxy) return '';
+    const host = req.headers.host || '';
+    // Une requête faite sur la machine elle-même (surveillance, lanceur) n'est pas un visiteur.
+    if (/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host)) return '';
+    const wanted = config.siteUrl ? new URL(config.siteUrl) : null;
+    const insecure = req.headers['x-forwarded-proto'] === 'http';
+    if (wanted && wanted.host !== host) return `${wanted.origin}${req.url}`;
+    if (insecure && /^[a-z0-9.-]+(:\d{1,5})?$/i.test(host)) return `https://${host}${req.url}`;
+    return '';
   }
 
   async function handle(req, res) {
@@ -294,6 +383,11 @@ function createApp({ config, store, clock = () => nowInZone(config.timezone) }) 
       url = new URL(req.url, 'http://localhost');
     } catch {
       return sendJson(req, res, 400, { error: 'Adresse invalide.' });
+    }
+    const redirect = canonicalRedirect(req);
+    if (redirect) {
+      res.writeHead(308, { Location: redirect, 'Cache-Control': 'public, max-age=3600' });
+      return res.end();
     }
     try {
       if (url.pathname.startsWith('/api/')) return await api(req, res, url);
@@ -317,12 +411,20 @@ function createApp({ config, store, clock = () => nowInZone(config.timezone) }) 
   }, 60 * 60_000);
   housekeeping.unref();
 
+  // Chaque minute : les rappels arrivés à échéance partent.
+  const reminding = setInterval(() => {
+    reminders.tick().catch(err => console.error('[rappels]', err));
+  }, 60_000);
+  reminding.unref();
+
   function close() {
+    stats.close();
     clearInterval(housekeeping);
+    clearInterval(reminding);
     events.close();
   }
 
-  return { handle, close, auth, events };
+  return { handle, close, auth, events, reminders, stats };
 }
 
 module.exports = { createApp };
