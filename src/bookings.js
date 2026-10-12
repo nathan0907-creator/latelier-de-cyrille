@@ -74,6 +74,9 @@ function createBookings({ config, store, clock, closures = () => store.closures.
       time: fromMinutes(start),
       start,
       duration: service.duration,
+      // Le temps de pose est noté avec le rendez-vous : il ne change pas si la carte change.
+      pauseAfter: service.pauseAfter || 0,
+      pauseDuration: service.pauseDuration || 0,
       serviceId: service.id,
       serviceName: service.name,
       price: service.price,
@@ -94,7 +97,7 @@ function createBookings({ config, store, clock, closures = () => store.closures.
     if (!booking) return failure(404, 'Rendez-vous introuvable.');
     const reactivating = booking.status === 'cancelled' && status !== 'cancelled';
     if (reactivating && booking.date >= clock().date
-      && hasConflict(store.bookings.all(), booking.date, booking.start, booking.duration, booking.id)) {
+      && hasConflict(store.bookings.all(), booking.date, booking.start, booking, booking.id)) {
       return failure(409, 'Ce créneau a été repris par un autre rendez-vous.', { code: 'slot_taken' });
     }
     // Un rendez-vous rétabli n'est plus « annulé par le client ».
@@ -123,7 +126,7 @@ function createBookings({ config, store, clock, closures = () => store.closures.
     if (!isValidDate(date)) return failure(400, 'Date invalide.');
     const day = daySlots({
       config, bookings: store.bookings.all().filter(b => b.id !== id), closures: closures(),
-      service: { duration: booking.duration }, date, now: clock(), mode: 'salon',
+      service: booking, date, now: clock(), mode: 'salon',
     });
     return { ok: true, closed: day.closed, slots: day.slots.map(({ time, available }) => ({ time, available })) };
   }
@@ -138,7 +141,7 @@ function createBookings({ config, store, clock, closures = () => store.closures.
     if (date < clock().date) return failure(400, 'Choisissez une date à venir.');
     const problem = slotProblem({
       config, bookings: store.bookings.all().filter(b => b.id !== id), closures: closures(),
-      service: { duration: booking.duration }, date, start, now: clock(), mode: 'salon',
+      service: booking, date, start, now: clock(), mode: 'salon',
     });
     if (problem === 'taken') return failure(409, 'Ce créneau est déjà pris par un autre rendez-vous.', { code: 'slot_taken' });
     if (problem) return failure(409, 'Le salon est fermé à ce moment-là.', { code: 'slot_unavailable' });

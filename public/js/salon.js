@@ -582,8 +582,19 @@ function timeline(date, ranges, bookings) {
     h('span', { class: 'block-meta' }, `${hoursLabel(booking)} · ${booking.serviceName}`),
     booking.status === 'pending' ? statusBadge(booking) : null);
     block.style.top = `calc(${(booking.start - from) / step} * var(--row-h))`;
-    block.style.height = `calc(${booking.duration / step} * var(--row-h) - 4px)`;
-    return block;
+    // Avec un temps de pose, le bloc s'arrête à la pose : la place est libre pour quelqu'un d'autre.
+    block.style.height = `calc(${(booking.pauseDuration ? booking.pauseAfter : booking.duration) / step} * var(--row-h) - 4px)`;
+    if (!booking.pauseDuration) return block;
+    // … et un second bloc marque la reprise, après la pose.
+    const resume = booking.pauseAfter + booking.pauseDuration;
+    const rest = h('button', {
+      type: 'button', class: `block block--${booking.status} block--rest`,
+      'aria-label': `${booking.name}, suite après la pose, à ${frTime(booking.start + resume)}`,
+      onclick: () => openDetail(booking.id),
+    }, h('span', { class: 'block-name' }, booking.name), h('span', { class: 'block-meta' }, `Suite après la pose · ${frTime(booking.start + resume)}`));
+    rest.style.top = `calc(${(booking.start + resume - from) / step} * var(--row-h))`;
+    rest.style.height = `calc(${(booking.duration - resume) / step} * var(--row-h) - 4px)`;
+    return [block, rest];
   }));
 
   refs.nowLine = null;

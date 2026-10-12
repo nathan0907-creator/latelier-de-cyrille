@@ -141,13 +141,13 @@ export function createSettingsViews({ call, toast, field, view, onSaved }) {
     const toDraft = item => {
       const amounts = (item.prices || [item.price]).map(amount => String(amount).replace('.', ','));
       const mode = amounts.length === 3 ? 'lengths' : amounts.length === 2 ? 'two' : item.priceFrom ? 'from' : 'single';
-      return { id: item.id, name: item.name, duration: item.duration, mode, amounts, featured: Boolean(item.featured) };
+      return { id: item.id, name: item.name, duration: item.duration, pauseAfter: item.pauseAfter || 0, pauseDuration: item.pauseDuration || 0, mode, amounts, featured: Boolean(item.featured) };
     };
     const draft = {
       priceNote: settings.priceNote,
       categories: settings.categories.map(category => ({ name: category.name, items: category.items.map(toDraft) })),
     };
-    const blank = () => ({ id: '', name: '', duration: step, mode: 'single', amounts: [''], featured: false });
+    const blank = () => ({ id: '', name: '', duration: step, pauseAfter: 0, pauseDuration: 0, mode: 'single', amounts: [''], featured: false });
 
     const body = h('div', { class: 'editor' });
 
@@ -155,6 +155,17 @@ export function createSettingsViews({ call, toast, field, view, onSaved }) {
       const name = h('input', { type: 'text', maxlength: '60', value: item.name, required: true, oninput: event => { item.name = event.target.value; } });
       const duration = h('select', { onchange: event => { item.duration = Number(event.target.value); } },
         durations.map(minutes => h('option', { value: String(minutes), selected: minutes === item.duration }, durationLabel(minutes))));
+      // Temps de pose : pendant ce temps, un autre rendez-vous peut être pris.
+      const pauseDuration = h('select', {
+        onchange: event => {
+          item.pauseDuration = Number(event.target.value);
+          if (item.pauseDuration && !item.pauseAfter) item.pauseAfter = step;
+          render();
+        },
+      }, [h('option', { value: '0', selected: !item.pauseDuration }, 'Aucun'),
+        ...durations.filter(minutes => minutes < item.duration).map(minutes => h('option', { value: String(minutes), selected: minutes === item.pauseDuration }, durationLabel(minutes)))]);
+      const pauseAfter = h('select', { onchange: event => { item.pauseAfter = Number(event.target.value); } },
+        durations.filter(minutes => minutes < item.duration).map(minutes => h('option', { value: String(minutes), selected: minutes === item.pauseAfter }, `après ${durationLabel(minutes)}`)));
       const mode = h('select', {
         onchange: event => {
           item.mode = event.target.value;
@@ -173,7 +184,9 @@ export function createSettingsViews({ call, toast, field, view, onSaved }) {
         h('div', { class: 'editor-main' },
           field({ id: uid('tarif-nom'), label: 'Prestation', control: name }),
           field({ id: uid('tarif-duree'), label: 'Durée', control: duration }),
-          field({ id: uid('tarif-mode'), label: 'Type de prix', control: mode })),
+          field({ id: uid('tarif-mode'), label: 'Type de prix', control: mode }),
+          field({ id: uid('tarif-pose'), label: 'Temps de pose', hint: item.pauseDuration ? '' : 'Pendant la pose, un autre rendez-vous peut être pris.', control: pauseDuration }),
+          item.pauseDuration ? field({ id: uid('tarif-pose-debut'), label: 'La pose commence', control: pauseAfter }) : null),
         h('div', { class: 'editor-amounts' }, amounts, h('span', { class: 'editor-unit', 'aria-hidden': 'true' }, '€')),
         h('div', { class: 'editor-tools' },
           h('label', { class: 'check', for: featuredId },
@@ -217,6 +230,7 @@ export function createSettingsViews({ call, toast, field, view, onSaved }) {
             name: category.name,
             items: category.items.map(item => ({
               id: item.id, name: item.name, duration: item.duration, featured: item.featured,
+              pauseAfter: item.pauseAfter, pauseDuration: item.pauseDuration,
               ...(item.amounts.length > 1 ? { prices: item.amounts } : { price: item.amounts[0], priceFrom: item.mode === 'from' }),
             })),
           })),

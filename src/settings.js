@@ -110,6 +110,13 @@ function createSettings({ base, store }) {
         if (!Number.isInteger(duration) || duration < step || duration > 600 || duration % step) {
           return failure(400, `La durée de « ${name} » doit être un multiple de ${step} minutes (10 heures au plus).`);
         }
+        // Temps de pose : rien, ou un début et une durée qui tiennent dans la prestation.
+        const pauseDuration = Number(item.pauseDuration) || 0;
+        const pauseAfter = pauseDuration ? Number(item.pauseAfter) || 0 : 0;
+        if (pauseDuration && (![pauseDuration, pauseAfter].every(m => Number.isInteger(m) && m > 0 && m % step === 0) || pauseAfter + pauseDuration >= duration)) {
+          return failure(400, `Le temps de pose de « ${name} » doit commencer après le début et finir avant la fin de la prestation.`);
+        }
+        const pause = pauseDuration ? { pauseAfter, pauseDuration } : {};
         const amounts = (Array.isArray(item.prices) ? item.prices : [item.price]).map(value => Math.round(Number(String(value).replace(',', '.')) * 100) / 100);
         if (![1, 2, 3].includes(amounts.length) || amounts.some(amount => !Number.isFinite(amount) || amount < 0 || amount > 5000)) {
           return failure(400, `Indiquez le prix de « ${name} » (un nombre, en euros).`);
@@ -120,8 +127,8 @@ function createSettings({ base, store }) {
         used.add(id);
         if (item.featured) featured.push(id);
         items.push(amounts.length > 1
-          ? { id, name, duration, prices: amounts }
-          : { id, name, duration, price: amounts[0], priceFrom: Boolean(item.priceFrom) });
+          ? { id, name, duration, ...pause, prices: amounts }
+          : { id, name, duration, ...pause, price: amounts[0], priceFrom: Boolean(item.priceFrom) });
       }
       services.push({ category, items });
     }
@@ -259,6 +266,8 @@ function createSettings({ base, store }) {
           id: service.id,
           name: service.name,
           duration: service.duration,
+          pauseAfter: service.pauseAfter || 0,
+          pauseDuration: service.pauseDuration || 0,
           ...(service.prices ? { prices: [...service.prices] } : { price: service.price, priceFrom: service.priceFrom }),
           featured: featured.has(service.id),
         })),
