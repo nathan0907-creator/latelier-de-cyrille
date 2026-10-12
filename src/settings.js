@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const { withSettings } = require('./config-parts');
+const { withSettings, readPauses } = require('./config-parts');
 const { imageSize } = require('./images');
 const { fromMinutes } = require('./time');
 
@@ -110,13 +110,12 @@ function createSettings({ base, store }) {
         if (!Number.isInteger(duration) || duration < step || duration > 600 || duration % step) {
           return failure(400, `La durée de « ${name} » doit être un multiple de ${step} minutes (10 heures au plus).`);
         }
-        // Temps de pose : rien, ou un début et une durée qui tiennent dans la prestation.
-        const pauseDuration = Number(item.pauseDuration) || 0;
-        const pauseAfter = pauseDuration ? Number(item.pauseAfter) || 0 : 0;
-        if (pauseDuration && (![pauseDuration, pauseAfter].every(m => Number.isInteger(m) && m > 0 && m % step === 0) || pauseAfter + pauseDuration >= duration)) {
-          return failure(400, `Le temps de pose de « ${name} » doit commencer après le début et finir avant la fin de la prestation.`);
+        // Temps de pose : aucun, ou des poses qui tiennent dans la prestation sans se toucher.
+        const pauses = readPauses(item, duration, step);
+        if (!pauses || pauses.length > 4) {
+          return failure(400, `Les temps de pose de « ${name} » doivent commencer après le début, ne pas se toucher et finir avant la fin de la prestation.`);
         }
-        const pause = pauseDuration ? { pauseAfter, pauseDuration } : {};
+        const pause = pauses.length ? { pauses } : {};
         const amounts = (Array.isArray(item.prices) ? item.prices : [item.price]).map(value => Math.round(Number(String(value).replace(',', '.')) * 100) / 100);
         if (![1, 2, 3].includes(amounts.length) || amounts.some(amount => !Number.isFinite(amount) || amount < 0 || amount > 5000)) {
           return failure(400, `Indiquez le prix de « ${name} » (un nombre, en euros).`);
@@ -266,8 +265,7 @@ function createSettings({ base, store }) {
           id: service.id,
           name: service.name,
           duration: service.duration,
-          pauseAfter: service.pauseAfter || 0,
-          pauseDuration: service.pauseDuration || 0,
+          pauses: service.pauses.map(pause => ({ ...pause })),
           ...(service.prices ? { prices: [...service.prices] } : { price: service.price, priceFrom: service.priceFrom }),
           featured: featured.has(service.id),
         })),

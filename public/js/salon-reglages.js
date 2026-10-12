@@ -141,31 +141,45 @@ export function createSettingsViews({ call, toast, field, view, onSaved }) {
     const toDraft = item => {
       const amounts = (item.prices || [item.price]).map(amount => String(amount).replace('.', ','));
       const mode = amounts.length === 3 ? 'lengths' : amounts.length === 2 ? 'two' : item.priceFrom ? 'from' : 'single';
-      return { id: item.id, name: item.name, duration: item.duration, pauseAfter: item.pauseAfter || 0, pauseDuration: item.pauseDuration || 0, mode, amounts, featured: Boolean(item.featured) };
+      return { id: item.id, name: item.name, duration: item.duration, pauses: (item.pauses || []).map(pause => ({ ...pause })), mode, amounts, featured: Boolean(item.featured) };
     };
     const draft = {
       priceNote: settings.priceNote,
       categories: settings.categories.map(category => ({ name: category.name, items: category.items.map(toDraft) })),
     };
-    const blank = () => ({ id: '', name: '', duration: step, pauseAfter: 0, pauseDuration: 0, mode: 'single', amounts: [''], featured: false });
+    const blank = () => ({ id: '', name: '', duration: step, pauses: [], mode: 'single', amounts: [''], featured: false });
 
     const body = h('div', { class: 'editor' });
 
     function row(category, item, index) {
       const name = h('input', { type: 'text', maxlength: '60', value: item.name, required: true, oninput: event => { item.name = event.target.value; } });
-      const duration = h('select', { onchange: event => { item.duration = Number(event.target.value); } },
-        durations.map(minutes => h('option', { value: String(minutes), selected: minutes === item.duration }, durationLabel(minutes))));
-      // Temps de pose : pendant ce temps, un autre rendez-vous peut être pris.
-      const pauseDuration = h('select', {
+      const duration = h('select', {
         onchange: event => {
-          item.pauseDuration = Number(event.target.value);
-          if (item.pauseDuration && !item.pauseAfter) item.pauseAfter = step;
+          item.duration = Number(event.target.value);
+          // Les poses possibles dépendent de la durée : on redessine, en gardant la main sur ce champ.
           render();
+          body.querySelectorAll('.editor-category')[draft.categories.indexOf(category)]?.querySelectorAll('.editor-row')[index]?.querySelector('select')?.focus();
         },
-      }, [h('option', { value: '0', selected: !item.pauseDuration }, 'Aucun'),
-        ...durations.filter(minutes => minutes < item.duration).map(minutes => h('option', { value: String(minutes), selected: minutes === item.pauseDuration }, durationLabel(minutes)))]);
-      const pauseAfter = h('select', { onchange: event => { item.pauseAfter = Number(event.target.value); } },
-        durations.filter(minutes => minutes < item.duration).map(minutes => h('option', { value: String(minutes), selected: minutes === item.pauseAfter }, `après ${durationLabel(minutes)}`)));
+      },
+        durations.map(minutes => h('option', { value: String(minutes), selected: minutes === item.duration }, durationLabel(minutes))));
+      // Temps de pose : pendant ce temps, un autre rendez-vous peut être pris. Il peut y en avoir plusieurs.
+      const inside = durations.filter(minutes => minutes < item.duration);
+      const pauses = item.pauses.map((pause, i) => {
+        const nth = item.pauses.length > 1 ? ` ${i + 1}` : '';
+        const choice = (key, label) => h('select', { onchange: event => { pause[key] = Number(event.target.value); } },
+          inside.map(minutes => h('option', { value: String(minutes), selected: minutes === pause[key] }, label(minutes))));
+        return h('div', { class: 'editor-pause' },
+          field({ id: uid('tarif-pose-debut'), label: `Pose${nth} : début`, control: choice('after', minutes => `après ${durationLabel(minutes)}`) }),
+          field({ id: uid('tarif-pose-duree'), label: 'Et dure', control: choice('duration', durationLabel) }),
+          iconButton('trash', `Retirer la pose${nth} de ${item.name || 'cette prestation'}`, () => { item.pauses.splice(i, 1); render(); }, { danger: true }));
+      });
+      // Une nouvelle pose se place après la précédente, en laissant un temps de travail entre les deux.
+      const lastPause = item.pauses[item.pauses.length - 1];
+      const nextAfter = lastPause ? lastPause.after + lastPause.duration + step : step;
+      const addPause = nextAfter + step < item.duration && item.pauses.length < 4
+        ? h('button', { type: 'button', class: 'btn btn--small btn--outline', onclick: () => { item.pauses.push({ after: nextAfter, duration: step }); render(); } },
+          icon('plus'), h('span', {}, item.pauses.length ? 'Ajouter une autre pose' : 'Ajouter un temps de pose'))
+        : null;
       const mode = h('select', {
         onchange: event => {
           item.mode = event.target.value;
@@ -184,10 +198,10 @@ export function createSettingsViews({ call, toast, field, view, onSaved }) {
         h('div', { class: 'editor-main' },
           field({ id: uid('tarif-nom'), label: 'Prestation', control: name }),
           field({ id: uid('tarif-duree'), label: 'Durée', control: duration }),
-          field({ id: uid('tarif-mode'), label: 'Type de prix', control: mode }),
-          field({ id: uid('tarif-pose'), label: 'Temps de pose', hint: item.pauseDuration ? '' : 'Pendant la pose, un autre rendez-vous peut être pris.', control: pauseDuration }),
-          item.pauseDuration ? field({ id: uid('tarif-pose-debut'), label: 'La pose commence', control: pauseAfter }) : null),
+          field({ id: uid('tarif-mode'), label: 'Type de prix', control: mode })),
         h('div', { class: 'editor-amounts' }, amounts, h('span', { class: 'editor-unit', 'aria-hidden': 'true' }, '€')),
+        h('div', { class: 'editor-pauses' }, pauses, addPause,
+          addPause && !item.pauses.length ? h('p', { class: 'editor-pauses-hint' }, 'Pendant une pose, un autre rendez-vous peut être pris.') : null),
         h('div', { class: 'editor-tools' },
           h('label', { class: 'check', for: featuredId },
             h('input', { type: 'checkbox', id: featuredId, checked: item.featured, onchange: event => { item.featured = event.target.checked; } }),
@@ -230,7 +244,7 @@ export function createSettingsViews({ call, toast, field, view, onSaved }) {
             name: category.name,
             items: category.items.map(item => ({
               id: item.id, name: item.name, duration: item.duration, featured: item.featured,
-              pauseAfter: item.pauseAfter, pauseDuration: item.pauseDuration,
+              pauses: item.pauses,
               ...(item.amounts.length > 1 ? { prices: item.amounts } : { price: item.amounts[0], priceFrom: item.mode === 'from' }),
             })),
           })),

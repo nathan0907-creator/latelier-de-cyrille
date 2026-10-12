@@ -581,20 +581,24 @@ function timeline(date, ranges, bookings) {
     h('span', { class: 'block-name' }, booking.name),
     h('span', { class: 'block-meta' }, `${hoursLabel(booking)} · ${booking.serviceName}`),
     booking.status === 'pending' ? statusBadge(booking) : null);
-    block.style.top = `calc(${(booking.start - from) / step} * var(--row-h))`;
-    // Avec un temps de pose, le bloc s'arrête à la pose : la place est libre pour quelqu'un d'autre.
-    block.style.height = `calc(${(booking.pauseDuration ? booking.pauseAfter : booking.duration) / step} * var(--row-h) - 4px)`;
-    if (!booking.pauseDuration) return block;
-    // … et un second bloc marque la reprise, après la pose.
-    const resume = booking.pauseAfter + booking.pauseDuration;
-    const rest = h('button', {
-      type: 'button', class: `block block--${booking.status} block--rest`,
-      'aria-label': `${booking.name}, suite après la pose, à ${frTime(booking.start + resume)}`,
-      onclick: () => openDetail(booking.id),
-    }, h('span', { class: 'block-name' }, booking.name), h('span', { class: 'block-meta' }, `Suite après la pose · ${frTime(booking.start + resume)}`));
-    rest.style.top = `calc(${(booking.start + resume - from) / step} * var(--row-h))`;
-    rest.style.height = `calc(${(booking.duration - resume) / step} * var(--row-h) - 4px)`;
-    return [block, rest];
+    // Avec des temps de pose, le bloc s'arrête à la première pose : la place est libre pour quelqu'un d'autre…
+    const pauses = booking.pauses || (booking.pauseDuration ? [{ after: booking.pauseAfter, duration: booking.pauseDuration }] : []);
+    const place = (el, begin, end) => {
+      el.style.top = `calc(${(booking.start + begin - from) / step} * var(--row-h))`;
+      el.style.height = `calc(${(end - begin) / step} * var(--row-h) - 4px)`;
+      return el;
+    };
+    place(block, 0, pauses.length ? pauses[0].after : booking.duration);
+    // … et un bloc marque chaque reprise, après une pose.
+    return [block, ...pauses.map((pause, i) => {
+      const resume = pause.after + pause.duration;
+      return place(h('button', {
+        type: 'button', class: `block block--${booking.status} block--rest`,
+        'aria-label': `${booking.name}, suite après la pose, à ${frTime(booking.start + resume)}`,
+        onclick: () => openDetail(booking.id),
+      }, h('span', { class: 'block-name' }, booking.name), h('span', { class: 'block-meta' }, `Suite après la pose · ${frTime(booking.start + resume)}`)),
+      resume, pauses[i + 1] ? pauses[i + 1].after : booking.duration);
+    })];
   }));
 
   refs.nowLine = null;

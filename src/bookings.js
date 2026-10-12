@@ -75,8 +75,7 @@ function createBookings({ config, store, clock, closures = () => store.closures.
       start,
       duration: service.duration,
       // Le temps de pose est noté avec le rendez-vous : il ne change pas si la carte change.
-      pauseAfter: service.pauseAfter || 0,
-      pauseDuration: service.pauseDuration || 0,
+      pauses: service.pauses.map(pause => ({ ...pause })),
       serviceId: service.id,
       serviceName: service.name,
       price: service.price,

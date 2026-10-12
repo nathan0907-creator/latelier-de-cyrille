@@ -33,6 +33,24 @@ function buildHours(raw, slotStep) {
 }
 
 /** La carte, vérifiée : la liste de toutes les prestations, et les mêmes rangées par catégorie. */
+/**
+ * Les temps de pose d'une prestation : « after » minutes après le début, la coiffeuse est libre
+ * « duration » minutes. Elle travaille avant chaque pose et après la dernière. Renvoie la liste
+ * dans l'ordre, ou null si elle ne tient pas dans la prestation.
+ * (On lit aussi l'ancienne écriture, à une seule pose : pauseAfter / pauseDuration.)
+ */
+function readPauses(item, duration, step) {
+  const raw = Array.isArray(item.pauses) ? item.pauses
+    : Number(item.pauseDuration) ? [{ after: item.pauseAfter, duration: item.pauseDuration }] : [];
+  const pauses = raw.map(pause => ({ after: Number(pause?.after), duration: Number(pause?.duration) })).sort((a, b) => a.after - b.after);
+  let busyUntil = 0;
+  for (const pause of pauses) {
+    if (![pause.after, pause.duration].every(m => Number.isInteger(m) && m > 0 && m % step === 0) || pause.after <= busyUntil) return null;
+    busyUntil = pause.after + pause.duration;
+  }
+  return busyUntil < duration ? pauses : null;
+}
+
 function buildServices(groups, slotStep) {
   const services = [];
   const categories = [];
@@ -53,17 +71,13 @@ function buildServices(groups, slotStep) {
       if (tiers && (!Array.isArray(tiers) || tiers.length < 2 || tiers.length > 3 || tiers.some(p => typeof p !== 'number' || p < 0))) {
         fail(`les prix de « ${s.id} » sont invalides : indiquez deux ou trois montants.`);
       }
-      // Temps de pose : « pauseAfter » minutes après le début, la coiffeuse est libre « pauseDuration » minutes.
-      const pauseDuration = s.pauseDuration || 0;
-      const pauseAfter = pauseDuration ? s.pauseAfter : 0;
-      if (pauseDuration && (![pauseDuration, pauseAfter].every(m => Number.isInteger(m) && m > 0 && m % slotStep === 0) || pauseAfter + pauseDuration >= s.duration)) {
-        fail(`le temps de pose de « ${s.id} » doit commencer après le début et finir avant la fin de la prestation, par tranches de ${slotStep} minutes.`);
-      }
+      const pauses = readPauses(s, s.duration, slotStep);
+      if (!pauses) fail(`les temps de pose de « ${s.id} » doivent commencer après le début, ne pas se toucher et finir avant la fin de la prestation, par tranches de ${slotStep} minutes.`);
       const price = tiers ? Math.min(...tiers) : s.price;
       if (typeof price !== 'number' || price < 0) fail(`le prix de « ${s.id} » est invalide.`);
       ids.add(s.id);
       const service = Object.freeze({
-        id: s.id, name: s.name, description: s.description || '', duration: s.duration, pauseAfter, pauseDuration,
+        id: s.id, name: s.name, description: s.description || '', duration: s.duration, pauses: Object.freeze(pauses.map(Object.freeze)),
         price, prices: tiers ? Object.freeze([...tiers]) : null,
         priceFrom: Boolean(s.priceFrom || tiers), category: group.category,
       });
@@ -94,4 +108,4 @@ function withSettings(base, settings = {}) {
   return Object.freeze(next);
 }
 
-module.exports = { fail, buildHours, buildServices, withSettings };
+module.exports = { fail, buildHours, buildServices, withSettings, readPauses };
