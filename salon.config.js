@@ -114,9 +114,9 @@ module.exports = {
       category: 'Colorations et techniques',
       items: [
         { id: 'patine', name: 'Patine', duration: 60, prices: [35, 45, 50] },
-        // Temps de pose : 30 min après le début, Cyrille est libre 30 min et peut prendre quelqu'un d'autre.
-        // ⚠ PROVISOIRE — le moment où la pose commence est une supposition, à lui faire valider.
-        { id: 'coloration', name: 'Coloration', duration: 90, pauseAfter: 30, pauseDuration: 30, prices: [40, 50, 65] },
+        // Donné par Cyrille : 30 min d'application, 30 min de pose (elle peut prendre quelqu'un d'autre),
+        // puis 1 h de coupe brushing. Deux heures en tout.
+        { id: 'coloration', name: 'Coloration', duration: 120, pauseAfter: 30, pauseDuration: 30, prices: [40, 50, 65] },
         { id: 'meches', name: 'Mèches', duration: 120, prices: [55, 65, 80] },
         { id: 'balayage', name: 'Balayage', duration: 120, prices: [75, 85, 100] },
         { id: 'micro-balayage', name: 'Micro-balayage', duration: 180, prices: [85, 105, 125] },
