@@ -1,0 +1,10 @@
+# Données du salon : rendez-vous, coordonnées des clients, mot de passe haché.
+# Ne jamais les publier ni les envoyer dans un dépôt.
+data/
+
+node_modules/
+*.log
+.env
+
+# Démonstration en ligne, fabriquée par scripts/export-demo.js
+_site/

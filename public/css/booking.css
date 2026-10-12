@@ -1,0 +1,765 @@
+/* ==========================================================================
+   Atelier de Cyril — page 4, « Petites annonces » : la prise de rendez-vous
+   1. on entoure une annonce   2. on arrache un créneau   3. on renvoie le coupon
+   (Annonces, affichette et languettes sont définies dans base.css.)
+   ========================================================================== */
+
+.booking {
+  padding-bottom: clamp(2rem, 5vw, 3.5rem);
+}
+
+/* ── Étapes ────────────────────────────────────────────────────────────── */
+
+.stepper {
+  margin-bottom: clamp(1.75rem, 4vw, 2.75rem);
+}
+
+.stepper ol {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--ink);
+  background: var(--white);
+}
+
+.stepper li + li {
+  border-left: 1px solid var(--ink);
+}
+
+.stepper-item {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  width: 100%;
+  min-height: 3.4rem;
+  padding: .5rem .9rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-label);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  line-height: 1.1;
+  text-align: left;
+  text-transform: uppercase;
+  transition: background-color .3s ease, color .3s ease;
+}
+
+.stepper-item:focus-visible {
+  outline-offset: -4px;
+}
+
+.stepper-item:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.stepper-item:not(:disabled, [aria-current="step"]):hover {
+  background: var(--marker);
+}
+
+.stepper-item[aria-current="step"] {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.stepper-num {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-family: var(--font-head);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+  transition: background-color .3s ease, border-color .3s ease, color .3s ease;
+}
+
+.stepper-item.is-done .stepper-num {
+  border-color: var(--red);
+  background: var(--red);
+  color: #fff;
+}
+
+.stepper-bar {
+  height: 4px;
+  background: var(--paper-2);
+}
+
+.stepper-bar span {
+  display: block;
+  height: 100%;
+  background: var(--red);
+  transform: scaleX(.3333);
+  transform-origin: left;
+  transition: transform .9s var(--ease-expo);
+}
+
+@media (max-width: 34rem) {
+  .stepper-item {
+    flex-direction: column;
+    justify-content: center;
+    gap: .3rem;
+    min-height: 4.4rem;
+    padding: .55rem .25rem;
+    font-size: .86rem;
+    letter-spacing: .08em;
+    text-align: center;
+  }
+}
+
+/* ── Grille principale ─────────────────────────────────────────────────── */
+
+.booking-grid {
+  display: grid;
+  gap: clamp(2rem, 5vw, 3rem);
+}
+
+.booking-main {
+  min-width: 0;
+}
+
+.panel {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.panel-title {
+  font-size: clamp(2.6rem, 5.6vw, 4.1rem);
+  font-weight: 400;
+  letter-spacing: .005em;
+  font-family: var(--font-poster);
+  line-height: .95;
+  text-transform: uppercase;
+}
+
+/* Les titres reçoivent le focus à chaque changement d'étape (lecteurs d'écran) : pas d'anneau. */
+.panel h2:focus {
+  outline: none;
+}
+
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem 1.5rem;
+}
+
+@media (min-width: 64rem) {
+  .booking-grid {
+    grid-template-columns: minmax(0, 1fr) 19.5rem;
+    align-items: start;
+  }
+
+  .summary {
+    position: sticky;
+    top: calc(var(--header-h) + 1.75rem);
+  }
+}
+
+/* ── Étape 1 : entourer une annonce ────────────────────────────────────── */
+
+.ads-group {
+  margin-top: .75rem;
+  padding-block: .5rem .45rem;
+  border-top: 4px solid var(--ink);
+  font-family: var(--font-label);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: .055em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.ads-group + .ads {
+  margin-top: -1.25rem;
+}
+
+.ads--pick .ad-foot span {
+  color: var(--muted);
+}
+
+/* L'annonce entourée garde son fond de surligneur */
+.ad[aria-pressed="true"] {
+  background: var(--marker);
+}
+
+/* ── Étape 2 : le calendrier ───────────────────────────────────────────── */
+
+.when {
+  display: grid;
+  gap: clamp(2rem, 4vw, 2.5rem);
+  margin-bottom: 1rem;
+}
+
+.calendar {
+  padding: .9rem;
+  border: 1px solid var(--ink);
+  background: var(--white);
+}
+
+.calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .6rem;
+}
+
+.calendar-month {
+  font-family: var(--font-head);
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  line-height: 1;
+}
+
+.calendar-weekdays,
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.calendar-weekdays {
+  margin-bottom: .45rem;
+  padding-block: .35rem;
+  border-block: 1px solid var(--ink);
+  color: var(--muted);
+  font-family: var(--font-label);
+  font-size: .9rem;
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.calendar-grid {
+  transition: opacity .2s ease;
+}
+
+.calendar-grid.is-loading {
+  opacity: .5;
+}
+
+.day {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-head);
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1;
+  transition: background-color .2s ease, color .2s ease, border-color .2s ease;
+}
+
+.day:focus-visible {
+  outline-offset: 1px;
+}
+
+.day:disabled {
+  color: #9c8e8c;
+  font-weight: 400;
+  cursor: not-allowed;
+}
+
+/* Jour avec de la place : une case encadrée */
+.day--open {
+  border-color: var(--ink);
+}
+
+@media (hover: hover) {
+  .day--open:hover {
+    background: var(--marker);
+  }
+}
+
+/* Jour complet : barré d'un trait rouge */
+.day--full {
+  background: linear-gradient(to top right, transparent calc(50% - 1px), var(--red) calc(50% - 1px), var(--red) calc(50% + 1px), transparent calc(50% + 1px));
+}
+
+.day--today::after {
+  content: "";
+  position: absolute;
+  bottom: 16%;
+  left: 50%;
+  width: .9rem;
+  height: 2px;
+  margin-left: -.45rem;
+  background: var(--red);
+}
+
+.day[aria-pressed="true"] {
+  border-color: var(--red);
+  background: var(--red);
+  color: #fff;
+}
+
+.day[aria-pressed="true"]::after {
+  background: #fff;
+}
+
+.calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem 1.1rem;
+  margin-top: .8rem;
+  padding-top: .65rem;
+  border-top: 1px solid var(--ink);
+  color: var(--muted);
+  font-family: var(--font-label);
+  font-size: .92rem;
+  font-weight: 600;
+  letter-spacing: .025em;
+  text-transform: uppercase;
+}
+
+.calendar-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+}
+
+.legend-dot {
+  width: .9rem;
+  height: .9rem;
+  border: 1px solid var(--ink);
+}
+
+.legend-dot--full {
+  border-color: var(--hair);
+  background: linear-gradient(to top right, transparent calc(50% - 1px), var(--red) calc(50% - 1px), var(--red) calc(50% + 1px), transparent calc(50% + 1px));
+}
+
+.legend-dot--closed {
+  border-color: transparent;
+  background: var(--paper-2);
+}
+
+@media (min-width: 48rem) {
+  .when {
+    grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+/* ── Étape 2 : l'affichette et ses languettes ──────────────────────────── */
+
+.flyer--slots .flyer-title {
+  font-size: clamp(2.3rem, 4.2vw, 3.2rem);
+}
+
+.flyer--slots .notice {
+  margin-top: .25rem;
+}
+
+.slots-body {
+  transition: opacity .2s ease;
+}
+
+.slots-body.is-loading {
+  opacity: .45;
+}
+
+.flyer--slots .tab {
+  min-height: 5.6rem;
+  font-size: 1.4rem;
+  letter-spacing: .01em;
+  text-transform: none;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.slots-empty {
+  font-style: italic;
+}
+
+/* Pas de languettes à afficher : l'affichette se referme proprement en bas. */
+.flyer:not(:has(.tabs)) {
+  padding-bottom: 1.4rem;
+  border-bottom: 1px solid var(--ink);
+}
+
+/* ── Étape 3 : le coupon-réponse ───────────────────────────────────────── */
+
+.coupon {
+  position: relative;
+  display: grid;
+  gap: 1.3rem;
+  max-width: 42rem;
+  margin-top: .75rem;
+  padding: 2rem clamp(1rem, 3vw, 1.75rem) 1.5rem;
+  border: 2px dashed var(--ink);
+  background: var(--white);
+}
+
+/* « Découpez suivant le pointillé » */
+.coupon-cut {
+  position: absolute;
+  top: -.85rem;
+  left: clamp(.6rem, 2vw, 1.25rem);
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding-inline: .5rem;
+  background: var(--paper);
+  font-family: var(--font-label);
+  font-size: .98rem;
+  font-weight: 700;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.coupon-cut .icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--red);
+}
+
+/* Les champs se remplissent « sur la ligne », comme un coupon papier */
+.coupon .field input,
+.coupon .field textarea {
+  padding-inline: .35rem;
+  border-width: 0 0 2px;
+  border-style: dotted;
+  background: transparent;
+  font-size: 1.25rem;
+  transition: background-color .2s ease, border-color .2s ease;
+}
+
+.coupon .field textarea {
+  min-height: 5.5rem;
+  background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--hair) 0);
+  background-size: 100% 1.9em;
+  line-height: 1.9;
+}
+
+.coupon .field input:focus-visible,
+.coupon .field textarea:focus-visible {
+  border-bottom-style: solid;
+  border-bottom-color: var(--red);
+  background-color: var(--marker);
+  box-shadow: none;
+}
+
+.coupon .field.is-invalid input,
+.coupon .field.is-invalid textarea {
+  border-bottom-style: solid;
+  border-bottom-color: var(--danger);
+  box-shadow: none;
+}
+
+.pay-note {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .75rem 1rem;
+  background: var(--marker);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.pay-note .icon {
+  width: 1.4rem;
+  height: 1.4rem;
+}
+
+.legal-note {
+  color: var(--muted);
+  font-size: 1rem;
+  font-style: italic;
+}
+
+/* ── Confirmation : « Retenu » ─────────────────────────────────────────── */
+
+.panel--done {
+  position: relative;
+  justify-items: start;
+  gap: 1.3rem;
+  max-width: 44rem;
+  padding-top: .5rem;
+}
+
+.panel--done .deck {
+  font-size: clamp(1.2rem, 2vw, 1.45rem);
+}
+
+/* Le coup de tampon */
+.done-stamp {
+  position: absolute;
+  top: -.5rem;
+  right: 0;
+  padding: .3rem;
+  border: 3px solid var(--red);
+  color: var(--red);
+  opacity: .9;
+  mix-blend-mode: multiply;
+  rotate: -9deg;
+}
+
+.done-stamp span {
+  display: block;
+  padding: .1rem .9rem .15rem;
+  border: 1px solid var(--red);
+  font-family: var(--font-poster);
+  font-size: clamp(2rem, 5.2vw, 3.1rem);
+  font-weight: 400;
+  letter-spacing: .1em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.is-done .done-stamp {
+  animation: slam .55s var(--ease-expo) .45s both;
+}
+
+.done-recap {
+  justify-self: stretch;
+  border-top: 4px solid var(--ink);
+  background: var(--white);
+}
+
+.done-recap > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: .7rem .9rem;
+  border-bottom: 1px dotted var(--hair);
+}
+
+.done-recap > div:last-child {
+  border-bottom: 1px solid var(--ink);
+}
+
+.done-recap dt,
+.summary-list dt {
+  flex: none;
+  color: var(--muted);
+  font-family: var(--font-label);
+  font-size: .95rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.done-recap dd,
+.summary-list dd {
+  font-weight: 600;
+  text-align: right;
+}
+
+.panel--done .pay-note {
+  justify-self: stretch;
+}
+
+@media (max-width: 40rem) {
+  .done-stamp {
+    position: relative;
+    top: auto;
+    justify-self: end;
+    margin-bottom: -1rem;
+  }
+}
+
+/* Grand écran : le tampon tombe dans la marge, à côté du titre, sans le recouvrir. */
+@media (min-width: 64rem) {
+  .done-stamp {
+    top: 2.75rem;
+    right: auto;
+    left: calc(100% + 1.5rem);
+  }
+}
+
+/* Une fois le rendez-vous retenu, le récapitulatif de côté n'a plus lieu d'être. */
+.is-done .summary {
+  display: none;
+}
+
+.is-done .booking-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* ── Récapitulatif : « votre annonce », découpée et scotchée ───────────── */
+
+.summary {
+  position: relative;
+  display: grid;
+  gap: .75rem;
+  padding: 1.5rem 1.2rem 1.2rem;
+  border: 1px solid var(--ink);
+  background: var(--white);
+  box-shadow: 0 1.4rem 2.2rem -1.6rem rgba(36, 26, 28, .5);
+}
+
+.summary::before {
+  content: "";
+  position: absolute;
+  top: -.75rem;
+  left: 50%;
+  width: 5rem;
+  height: 1.5rem;
+  margin-left: -2.5rem;
+  background: var(--tape);
+  box-shadow: 0 1px 2px rgba(36, 26, 28, .18);
+  rotate: -3deg;
+}
+
+.summary-title {
+  padding-bottom: .5rem;
+  border-bottom: 3px solid var(--ink);
+  font-family: var(--font-label);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: .065em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.summary-list > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: .55rem;
+  border-bottom: 1px dotted var(--hair);
+}
+
+.summary-list > div:first-child {
+  padding-top: 0;
+}
+
+.summary-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  font-family: var(--font-label);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.summary-total strong {
+  font-family: var(--font-head);
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  line-height: 1;
+  text-transform: none;
+}
+
+.summary-salon {
+  display: flex;
+  gap: .5rem;
+  padding-top: .7rem;
+  border-top: 1px solid var(--ink);
+  color: var(--muted);
+  font-size: 1rem;
+  font-style: italic;
+  line-height: 1.35;
+}
+
+.summary-salon .icon {
+  margin-top: .15rem;
+}
+
+/* ── Images clés ───────────────────────────────────────────────────────── */
+
+@keyframes slam {
+  from { opacity: 0; scale: 2.6; rotate: -22deg; }
+  12% { opacity: .9; }
+}
+
+/* ── Téléphone : le récapitulatif reste en bas de l'écran ──────────────── */
+/* (Sur grand écran, il est dans la colonne de droite.) */
+
+.booking-bar {
+  display: none;
+}
+
+@media (max-width: 63.99rem) {
+  .booking-bar:not([hidden]) {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 55;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 3.5rem;
+    padding: .5rem var(--gutter) calc(.5rem + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--paper);
+    background: var(--ink);
+    color: var(--paper);
+    animation: bar-in .5s var(--ease-expo) both;
+  }
+
+  .booking-bar-what {
+    display: grid;
+    min-width: 0;
+    line-height: 1.2;
+  }
+
+  .booking-bar-what strong {
+    overflow: hidden;
+    font-family: var(--font-head);
+    font-size: 1.15rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .booking-bar-what span {
+    overflow: hidden;
+    color: var(--muted-on-dark);
+    font-family: var(--font-label);
+    font-size: .95rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .booking-bar-price {
+    flex: none;
+    font-family: var(--font-head);
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  /* La page laisse la place de la barre sous son dernier bouton. */
+  .booking {
+    padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+  }
+}
+
+@keyframes bar-in {
+  from { transform: translateY(105%); }
+}
+
+/* Petit téléphone : le calendrier gagne les marges pour que chaque jour reste facile à toucher. */
+@media (max-width: 24rem) {
+  .calendar {
+    margin-inline: calc(var(--gutter) * -.5);
+    padding-inline: .35rem;
+  }
+
+  .calendar-weekdays,
+  .calendar-grid {
+    gap: 2px;
+  }
+}

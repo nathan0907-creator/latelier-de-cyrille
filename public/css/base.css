@@ -1,0 +1,2408 @@
+/* ==========================================================================
+   Atelier de Cyril — base
+   Le site est une gazette de coiffure, façon magazine féminin d'autrefois :
+   papier crème, encre brune, une couleur d'accompagnement (framboise).
+   Titre en écriture d'enseigne, gros titres en capitales étroites relevées d'un mot
+   en écriture, filets, encadrés, petites annonces, affichettes à languettes.
+   Ce fichier : jetons, typographie, composants communs, en-tête, pied de page,
+   animations. Aucune dépendance.
+   ========================================================================== */
+
+:root {
+  /* Couleurs */
+  --paper: #f8f1ea;
+  --paper-2: #f0e2d8;
+  --white: #fffaf5;
+  --ink: #241a1c;
+  --red: #b02a55;        /* la couleur d'accompagnement : framboise */
+  --red-light: #f39bb3;
+  --marker: #f6cfd4;      /* surligneur, rose poudré */
+  --tape: rgba(233, 196, 186, .82);
+  --text: #241a1c;
+  --muted: #6a5a58;
+  --muted-on-dark: #cdbfc0;
+  --hair: rgba(36, 26, 28, .28);   /* filet maigre */
+  --ok: #1f6a45;
+  --ok-soft: #dfeee4;
+  --warn: #7a5008;
+  --warn-soft: #f6e9c8;
+  --danger: #a82a1c;
+  --danger-soft: #f7dfd9;
+  --live: #2fa56b;
+
+  /* Couleurs de contexte : redéfinies sur fond d'encre */
+  --page-bg: var(--paper);
+  --edge: var(--ink);
+  --rule: var(--hair);
+  --soft: var(--muted);
+  --accent-text: var(--red);
+  --focus: var(--red);
+
+  /* Les familles du journal : des caractères de presse, pas des polices « de site » */
+  --font-name: "Grand Hotel", "Brush Script MT", "Segoe Script", cursive;                    /* le titre, les mots en écriture */
+  --font-poster: "League Gothic", "Haettenschweiler", "Arial Narrow", Impact, sans-serif;  /* les gros titres, en capitales */
+  --font-head: "Old Standard TT", "Century Schoolbook", "Bodoni MT", Georgia, serif;       /* les titres secondaires */
+  --font-text: "Old Standard TT", "Century Schoolbook", Georgia, serif;                    /* le texte */
+  --font-label: "Archivo Narrow", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;     /* surtitres, rubriques, boutons */
+
+  /* Mouvement : on décélère en arrivant, on accélère en partant, jamais de rebond. */
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --ease-expo: cubic-bezier(.19, 1, .22, 1);
+  --ease-in: cubic-bezier(.6, 0, .9, .3);
+  --ease-in-out: cubic-bezier(.76, 0, .24, 1);
+
+  /* Mise en page */
+  --container: 86rem;
+  --gutter: clamp(1.1rem, 3.6vw, 3rem);
+  --header-h: 4rem;
+}
+
+.box--ink,
+.ticker,
+.lightbox,
+.map-facade,
+.salon-bar {
+  --page-bg: var(--ink);
+  --edge: var(--paper);
+  --rule: rgba(248, 241, 234, .3);
+  --soft: var(--muted-on-dark);
+  --accent-text: var(--red-light);
+  --focus: var(--red-light);
+}
+
+/* ── Remise à zéro ─────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-padding-top: calc(var(--header-h) + 1rem);
+  color-scheme: only light;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: clip;
+  /* Papier journal : une teinte chaude et un grain très léger */
+  background-color: var(--paper);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  color: var(--text);
+  font-family: var(--font-text);
+  font-size: 1.1875rem;
+  font-variant-numeric: lining-nums; /* chiffres alignés : prix et horaires se lisent d'un coup d'œil */
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Un tampon ou une languette peut dépasser de la page le temps d'une animation : on rogne
+   sans créer de zone de défilement (les éléments « collants » continuent de fonctionner). */
+main {
+  overflow-x: clip;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+img {
+  height: auto;
+}
+
+h1, h2, h3, h4, p, figure, dl, dd, ol, ul {
+  margin: 0;
+}
+
+ol, ul {
+  padding: 0;
+  list-style: none;
+}
+
+a {
+  color: inherit;
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+address {
+  font-style: normal;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+::selection {
+  background: var(--marker);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+/* ── Utilitaires ───────────────────────────────────────────────────────── */
+
+.container {
+  width: 100%;
+  max-width: var(--container);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.icon {
+  flex: none;
+  width: 1.15em;
+  height: 1.15em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.skip-link {
+  position: fixed;
+  top: .75rem;
+  left: .75rem;
+  z-index: 300;
+  padding: .7rem 1.1rem;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-label);
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transform: translateY(-250%);
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
+/* ── Typographie du journal ────────────────────────────────────────────── */
+
+h1, h2, h3 {
+  font-family: var(--font-head);
+  line-height: 1.05;
+  text-wrap: balance;
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+
+/* Gros titres : capitales étroites. Le mot fort (em) passe en écriture d'enseigne et en
+   couleur, comme sur les réclames et les magazines féminins des années cinquante. */
+.headline {
+  font-family: var(--font-poster);
+  font-weight: 400;
+  letter-spacing: .005em;
+  line-height: .9;
+  text-wrap: balance;
+  text-transform: uppercase;
+}
+
+.headline em {
+  font-style: normal;
+  color: var(--red);
+  font-family: var(--font-name);
+  font-size: 1.1em;
+  letter-spacing: 0;
+  line-height: 1;
+  text-transform: none;
+}
+
+/* Les mots en écriture se suivent sans se toucher, et leurs jambages (g, p, f, z) ont la place de descendre. */
+.headline em {
+  padding-inline: .07em;
+}
+
+/* En début de ligne, l'écriture s'aligne sur les capitales du dessus. */
+.headline .line > .w:first-child em {
+  margin-left: -.07em;
+}
+
+.headline:has(.line:last-child em),
+.headline:has(> em) {
+  padding-bottom: .22em;
+}
+
+/* Le mot « magique » : plusieurs encres qui glissent lentement dans les lettres. */
+.headline em.magic {
+  display: inline-block;
+  margin: -.2em -.12em -.36em;
+  padding: .2em .12em .36em;
+  background-image: linear-gradient(100deg, #b02a55, #d4541a, #b8860b, #1f8a5b, #1f6fb5, #7a3bb0, #b02a55, #d4541a, #b8860b);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: magic 9s linear infinite;
+}
+
+.headline em.magic:first-child,
+.headline .line > .w:first-child em.magic {
+  margin-left: -.12em;
+}
+
+.headline b {
+  color: var(--red);
+  font-weight: inherit;
+}
+
+.headline--xl { font-size: clamp(3.75rem, 11.5vw, 10.5rem); }
+.headline--l { font-size: clamp(3rem, 7vw, 6rem); }
+
+/* Titres secondaires : en romain gras, bas de casse */
+.headline--m,
+.headline--s {
+  font-family: var(--font-head);
+  font-weight: 700;
+  letter-spacing: -.01em;
+  text-transform: none;
+}
+
+.headline--m { font-size: clamp(1.7rem, 3vw, 2.5rem); line-height: 1.08; }
+.headline--s { font-size: 1.6rem; line-height: 1.12; }
+
+/* Surtitre : « À LA UNE », précédé d'un pavé rouge */
+.kicker,
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: .6rem;
+  color: var(--accent-text);
+  font-family: var(--font-label);
+  font-size: .98rem;
+  font-weight: 700;
+  letter-spacing: .065em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.kicker::before,
+.eyebrow::before {
+  content: "";
+  width: .55rem;
+  height: .55rem;
+  background: currentColor;
+}
+
+/* Chapeau : la phrase en italique sous le titre */
+.deck {
+  max-width: 46rem;
+  font-size: clamp(1.3rem, 2.2vw, 1.7rem);
+  font-style: italic;
+  line-height: 1.3;
+  text-wrap: pretty;
+}
+
+/* Titre courant en haut de page : « Page 2 — La carte — date » */
+.folio {
+  display: flex;
+  justify-content: space-between;
+  gap: .5rem 1.5rem;
+  padding-block: .5rem .45rem;
+  border-top: 3px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+  font-family: var(--font-label);
+  font-size: .92rem;
+  font-weight: 700;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.folio span {
+  white-space: nowrap;
+}
+
+.folio span:nth-child(2) {
+  color: var(--red);
+}
+
+/* Petit écran : la date du jour laisse la place au numéro de page et à la rubrique. */
+@media (max-width: 34rem) {
+  .folio span:nth-child(3) {
+    display: none;
+  }
+}
+
+/* Légende de photo */
+.caption,
+figcaption {
+  margin-top: .55rem;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.caption b {
+  color: var(--ink);
+  font-family: var(--font-label);
+  font-size: .95em;
+  font-weight: 600;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+figcaption span {
+  margin-left: .35rem;
+  font-family: var(--font-label);
+  font-size: .8rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+/* Texte en colonnes, justifié, avec filet entre les colonnes */
+.columns {
+  columns: 2 15rem;
+  column-gap: 2rem;
+  column-rule: 1px solid var(--hair);
+  text-align: justify;
+  hyphens: auto;
+}
+
+.columns p + p {
+  text-indent: 1.3em;
+}
+
+/* Lettrine */
+.dropcap > p:first-child::first-letter {
+  float: left;
+  padding: .09em .1em 0 0;
+  font-family: var(--font-head);
+  font-size: 4.55em;
+  font-weight: 700;
+  line-height: .78;
+}
+
+.byline {
+  font-family: var(--font-label);
+  font-size: .86rem;
+  font-weight: 600;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.columns .jump {
+  margin-top: .8rem;
+  font-family: var(--font-label);
+  font-size: .9rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-align: right;
+  text-indent: 0;
+  text-transform: uppercase;
+}
+
+/* Bandeau de rubrique : titre entre un filet gras et un filet maigre */
+.section-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .2rem 1.5rem;
+  margin-bottom: clamp(1.5rem, 3vw, 2.5rem);
+  padding-block: .55rem .5rem;
+  border-top: 4px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+}
+
+.section-title {
+  font-family: var(--font-label);
+  font-size: clamp(1.3rem, 2.4vw, 1.75rem);
+  font-weight: 700;
+  letter-spacing: .055em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.section-note {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  min-height: 2.75rem;
+  margin-block: -.6rem;
+  color: var(--red);
+  font-family: var(--font-label);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.section-note .icon {
+  transition: transform .4s var(--ease-out);
+}
+
+@media (hover: hover) {
+  .section-note:hover {
+    color: var(--ink);
+  }
+
+  .section-note:hover .icon {
+    transform: translateX(4px);
+  }
+}
+
+.section {
+  padding-block: clamp(2.25rem, 5vw, 4rem);
+}
+
+.section-foot {
+  margin-top: clamp(1.5rem, 3vw, 2.25rem);
+}
+
+/* Lignes de titre découpées : chaque mot (.w) est un masque d'où sort son contenu (.w-i).
+   Les marges négatives laissent passer accents, jambages et italiques. */
+.line {
+  display: block;
+}
+
+.w {
+  display: inline-block;
+  overflow: hidden;
+  margin: -.26em -.1em -.4em;
+  padding: .26em .1em .4em;
+  vertical-align: bottom;
+}
+
+.w-i {
+  display: inline-block;
+}
+
+/* ── Pages intérieures ─────────────────────────────────────────────────── */
+
+.page {
+  padding-top: var(--header-h);
+}
+
+.page-head {
+  display: grid;
+  justify-items: start;
+  gap: 1rem;
+  padding-block: clamp(1rem, 2.5vw, 1.75rem) clamp(1.75rem, 4vw, 3rem);
+}
+
+/* Pages intérieures : un titre fort, mais qui laisse voir la suite sans défiler */
+.page-head .headline--xl {
+  font-size: clamp(3.75rem, 10.5vw, 8.75rem);
+}
+
+.page-head .folio {
+  justify-self: stretch;
+  margin-bottom: clamp(1rem, 3vw, 2.25rem);
+}
+
+/* ── Encadrés ──────────────────────────────────────────────────────────── */
+
+.box {
+  display: grid;
+  align-content: start;
+  gap: .9rem;
+  padding: 1rem 1.2rem 1.25rem;
+  border: 1px solid var(--ink);
+  background: var(--white);
+  color: var(--ink);
+}
+
+.box-title {
+  padding-bottom: .5rem;
+  border-bottom: 1px solid var(--edge);
+  font-family: var(--font-label);
+  font-size: .95rem;
+  font-weight: 700;
+  letter-spacing: .065em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.box--ink {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* Brèves */
+.briefs li {
+  padding-block: .6rem;
+  border-bottom: 1px dotted var(--hair);
+  font-size: 1.02rem;
+  line-height: 1.35;
+}
+
+.briefs li:first-child {
+  padding-top: 0;
+}
+
+.briefs li:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.briefs strong {
+  font-family: var(--font-label);
+  font-size: .95em;
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+/* ── Liens et boutons ──────────────────────────────────────────────────── */
+
+.link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: .22em;
+  text-decoration-color: var(--accent-text);
+  cursor: pointer;
+  transition: background-color .2s ease;
+}
+
+/* Au survol : un trait de surligneur (pas au doigt, où le survol reste « collé » après un appui) */
+@media (hover: hover) {
+  .link:hover {
+    background: var(--marker);
+    color: var(--ink);
+  }
+}
+
+.link .icon {
+  display: inline-block;
+  vertical-align: -.2em;
+}
+
+/* Liens isolés : zone tactile confortable */
+.actions .link,
+.panel-actions .link,
+.ours-col > .link,
+.ours-list .link,
+.panel--done > .link,
+.map-facade-copy .link {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  min-height: 2.75rem;
+}
+
+.btn {
+  --bg: var(--ink);
+  --fg: var(--paper);
+  --bd: var(--ink);
+  --hover-bg: var(--paper);
+  --hover-fg: var(--ink);
+
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .6rem;
+  min-height: 3.1rem;
+  padding: .5rem 1.35rem;
+  overflow: hidden;
+  border: 1px solid var(--bd);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-label);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  line-height: 1.1;
+  text-decoration: none;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color .25s ease, color .25s ease, border-color .25s ease, opacity .25s ease, translate .5s var(--ease-expo);
+}
+
+.btn .icon {
+  transition: transform .4s var(--ease-out);
+}
+
+/* Au survol, le libellé monte et son double (data-text) prend sa place. */
+.btn > span[data-text] {
+  position: relative;
+  display: inline-block;
+  transition: transform .5s var(--ease-expo);
+}
+
+.btn > span[data-text]::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 100%;
+  left: 0;
+  padding-top: 1.1em;
+}
+
+@media (hover: hover) {
+  .btn:not(:disabled):hover {
+    background: var(--hover-bg);
+    color: var(--hover-fg);
+  }
+
+  .btn:not(:disabled):hover .icon {
+    transform: translateX(4px);
+  }
+
+  .btn:not(:disabled):hover > span[data-text] {
+    transform: translateY(calc(-100% - 1.1em));
+  }
+}
+
+.btn:disabled {
+  opacity: .38;
+  cursor: not-allowed;
+}
+
+.btn--accent {
+  --bg: var(--red);
+  --bd: var(--red);
+  --fg: #fff;
+  --hover-bg: var(--ink);
+  --hover-fg: var(--paper);
+}
+
+.btn--accent:not(:disabled):hover {
+  border-color: var(--ink);
+}
+
+.btn--outline {
+  --bg: transparent;
+  --fg: var(--ink);
+  --hover-bg: var(--ink);
+  --hover-fg: var(--paper);
+}
+
+.btn--danger {
+  --bg: transparent;
+  --fg: var(--danger);
+  --bd: var(--danger);
+  --hover-bg: var(--danger);
+  --hover-fg: #fff;
+}
+
+.btn--small {
+  min-height: 2.75rem;
+  padding-inline: 1rem;
+  font-size: 1rem;
+}
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 1px solid var(--edge);
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  transition: background-color .2s ease, color .2s ease, opacity .2s ease;
+}
+
+.icon-btn:not(:disabled):hover {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.icon-btn:disabled {
+  opacity: .3;
+  cursor: not-allowed;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .8rem 1.5rem;
+}
+
+/* ── Tampon ────────────────────────────────────────────────────────────── */
+
+/* --tilt : l'inclinaison du coup de tampon (jamais parfaitement droit). */
+.stamp {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: clamp(5.75rem, 10vw, 7.75rem);
+  aspect-ratio: 1;
+  color: var(--red);
+  text-decoration: none;
+  rotate: var(--tilt, 0deg);
+}
+
+.stamp > svg:not(.icon) {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Seul le tampon cliquable tourne : c'est une invitation, pas une empreinte. */
+.stamp--solid > svg:not(.icon) {
+  animation: spin 28s linear infinite;
+}
+
+.stamp text {
+  fill: currentColor;
+  font-family: var(--font-label);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.stamp circle {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+/* Tampon cliquable : pastille rouge pleine, flèche au centre */
+.stamp--solid {
+  color: #fff;
+}
+
+.stamp--solid::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--red);
+  transition: scale .5s var(--ease-expo), background-color .25s ease;
+}
+
+.stamp--solid .icon {
+  position: relative;
+  width: 1.8rem;
+  height: 1.8rem;
+  transition: transform .5s var(--ease-expo);
+}
+
+.stamp--solid:hover::before {
+  background: var(--ink);
+  scale: 1.07;
+}
+
+.stamp--solid:hover .icon {
+  transform: translate(4px, -4px);
+}
+
+.stamp--cta {
+  width: clamp(8rem, 14vw, 10.5rem);
+}
+
+/* ── Bandeau « dernière minute » ───────────────────────────────────────── */
+
+.ticker {
+  display: flex;
+  align-items: stretch;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-label);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.ticker-label {
+  white-space: nowrap;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: .55rem;
+  padding: .5rem 1rem .5rem var(--gutter);
+  background: var(--red);
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: .06em;
+}
+
+.ticker-label::before {
+  content: "";
+  width: .5rem;
+  height: .5rem;
+  border-radius: 50%;
+  background: #fff;
+  animation: blink 1.4s steps(2, jump-none) infinite;
+}
+
+.ticker-window {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ticker-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 52s linear infinite;
+}
+
+.ticker ul {
+  display: flex;
+  flex: none;
+}
+
+.ticker li {
+  position: relative;
+  padding: .5rem 1.5rem;
+  white-space: nowrap;
+}
+
+.ticker li::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -.2rem;
+  width: .4rem;
+  height: .4rem;
+  margin-top: -.2rem;
+  background: var(--red-light);
+  transform: rotate(45deg);
+}
+
+.ticker b {
+  color: #fff;
+  font-weight: 700;
+}
+
+/* ── Affichette à languettes détachables ───────────────────────────────── */
+
+.flyer {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: .7rem;
+  padding: 1.6rem 1.4rem 0;
+  border: 1px solid var(--ink);
+  border-bottom: 0;
+  background: var(--white);
+}
+
+/* Le bout de ruban adhésif qui la tient */
+.flyer::before {
+  content: "";
+  position: absolute;
+  top: -.75rem;
+  left: 50%;
+  width: 5.5rem;
+  height: 1.5rem;
+  margin-left: -2.75rem;
+  background: var(--tape);
+  box-shadow: 0 1px 2px rgba(36, 26, 28, .18);
+  rotate: 2deg;
+}
+
+.flyer-kicker {
+  color: var(--red);
+  font-family: var(--font-label);
+  font-size: .95rem;
+  font-weight: 700;
+  letter-spacing: .065em;
+  text-transform: uppercase;
+}
+
+.flyer-title {
+  font-family: var(--font-poster);
+  font-size: clamp(2.7rem, 5.2vw, 4rem);
+  font-weight: 400;
+  letter-spacing: .005em;
+  line-height: .92;
+  text-transform: uppercase;
+}
+
+.flyer-text {
+  max-width: 34rem;
+  font-size: 1.02rem;
+  line-height: 1.4;
+}
+
+/* La rangée de languettes : un trait de coupe en pointillés au-dessus, un entre chaque.
+   Le masque rogne le pointillé de gauche (il doublerait le bord de l'affichette) et laisse
+   dépasser, en bas et à droite, une languette qu'on détache. */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  margin: .9rem -1.4rem 0;
+  clip-path: inset(0 -2rem -7rem 1px);
+}
+
+.tabs li {
+  flex: 1 0 2.9rem;
+  min-width: 0;
+  border-top: 1px dashed var(--ink);
+  border-left: 1px dashed var(--ink);
+  background: var(--page-bg);
+}
+
+.tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 7.25rem;
+  padding: .6rem .15rem;
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  background: var(--white);
+  color: var(--ink);
+  font-family: var(--font-label);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-decoration: none;
+  text-transform: uppercase;
+  cursor: pointer;
+  transform-origin: 50% 0;
+  transition: transform .45s var(--ease-expo), background-color .2s ease, color .2s ease;
+}
+
+/* Le texte se lit de bas en haut, comme sur une vraie languette */
+.tab > span {
+  writing-mode: vertical-rl;
+  white-space: nowrap;
+  transform: rotate(180deg);
+}
+
+.tab:focus-visible {
+  outline-offset: -4px;
+}
+
+@media (hover: hover) {
+  /* Au survol, la languette commence à se détacher */
+  .tab:not(:disabled, [aria-pressed="true"]):hover {
+    background: var(--marker);
+    transform: rotate(-3.5deg) translateY(.3rem);
+  }
+}
+
+/* Languette choisie : détachée, en rouge */
+.tab[aria-pressed="true"] {
+  background: var(--red);
+  color: #fff;
+  transform: rotate(-5deg) translateY(.7rem);
+}
+
+/* Languette déjà arrachée (créneau pris) : il ne reste qu'un bout déchiré */
+.tab:disabled {
+  border-bottom-color: transparent;
+  background: transparent;
+  color: transparent;
+  cursor: not-allowed;
+}
+
+.tab:disabled::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: .85rem;
+  background: var(--white);
+  clip-path: polygon(0 0, 100% 0, 100% 55%, 84% 100%, 68% 50%, 50% 92%, 33% 45%, 14% 100%, 0 60%);
+}
+
+/* Arrachée à l'instant, sous vos yeux (un autre client vient de la prendre) */
+.tab.is-lost {
+  animation: tear 1s var(--ease-in) both;
+}
+
+.tab.is-lost::before {
+  animation: fade-in .01s linear 1s backwards;
+}
+
+/* Languettes vierges : tant qu'aucun jour n'est choisi */
+span.tab {
+  cursor: default;
+}
+
+/* ── Petites annonces ──────────────────────────────────────────────────── */
+
+.ads {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr));
+  border-top: 1px solid var(--ink);
+  border-left: 1px solid var(--ink);
+}
+
+.ads > * {
+  border-right: 1px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+}
+
+.ad {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: .4rem;
+  width: 100%;
+  height: 100%;
+  padding: .9rem 1rem 1rem;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color .25s ease;
+}
+
+button.ad {
+  border-top: 0;
+  border-left: 0;
+  border-radius: 0;
+}
+
+.ad-ref {
+  color: var(--muted);
+  font-family: var(--font-label);
+  font-size: .86rem;
+  font-weight: 600;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.ad-title {
+  font-family: var(--font-head);
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  line-height: 1.05;
+}
+
+.ad-text {
+  font-size: .98rem;
+  line-height: 1.35;
+}
+
+.ad-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: .45rem;
+  padding-top: .5rem;
+  border-top: 1px dotted var(--hair);
+  font-family: var(--font-label);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.ad-foot b {
+  font-family: var(--font-head);
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.ad-foot .icon {
+  display: inline-block;
+  vertical-align: -.18em;
+  transition: transform .4s var(--ease-out);
+}
+
+@media (hover: hover) {
+  .ad:hover {
+    background: var(--marker);
+  }
+
+  .ad:hover .ad-foot .icon {
+    transform: translateX(4px);
+  }
+}
+
+.ad:focus-visible {
+  outline-offset: -4px;
+}
+
+/* Le trait de stylo rouge qui entoure l'annonce choisie */
+.pen {
+  position: absolute;
+  inset: -.3rem -.4rem;
+  width: calc(100% + .8rem);
+  height: calc(100% + .6rem);
+  max-width: none;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.pen path {
+  fill: none;
+  stroke: var(--red);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  opacity: 0; /* sans quoi le bout arrondi du trait laisse un point rouge sur chaque annonce */
+  transition: stroke-dashoffset .25s ease, opacity .01s linear .25s;
+}
+
+.ad[aria-pressed="true"] {
+  z-index: 1;
+}
+
+.ad[aria-pressed="true"] .pen path {
+  stroke-dashoffset: 0;
+  opacity: 1;
+  transition: stroke-dashoffset .6s var(--ease-in-out);
+}
+
+/* ── Pastilles « en direct » ───────────────────────────────────────────── */
+
+.dot {
+  flex: none;
+  width: .55rem;
+  height: .55rem;
+  border-radius: 50%;
+  background: var(--live);
+  animation: pulse 2.2s ease-out infinite;
+}
+
+.live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .6rem;
+  min-height: 2.5rem;
+  padding: .35rem .9rem;
+  border: 1px solid var(--ink);
+  background: var(--white);
+  font-family: var(--font-label);
+  font-size: .9rem;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.open-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  font-family: var(--font-label);
+  font-size: .98rem;
+  font-weight: 600;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.open-badge.is-closed .dot {
+  background: var(--red);
+  animation: none;
+}
+
+/* ── Horaires ──────────────────────────────────────────────────────────── */
+
+.hours {
+  width: 100%;
+  font-size: 1rem;
+}
+
+.hours th {
+  padding: .42rem 1rem .42rem 0;
+  font-family: var(--font-label);
+  font-weight: 600;
+  letter-spacing: .03em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.hours td {
+  padding: .42rem 0;
+  font-variant-numeric: lining-nums tabular-nums;
+  text-align: right;
+}
+
+.hours tr + tr {
+  border-top: 1px dotted var(--rule);
+}
+
+.hours .is-closed td {
+  color: var(--soft);
+  font-style: italic;
+}
+
+.hours .is-today th,
+.hours .is-today td {
+  font-weight: 700;
+}
+
+.hours .is-today.is-closed td {
+  font-weight: 400;
+}
+
+.hours .is-today th::before {
+  content: "";
+  display: inline-block;
+  width: .5rem;
+  height: .5rem;
+  margin-right: .5rem;
+  background: var(--accent-text);
+}
+
+/* ── Formulaires ───────────────────────────────────────────────────────── */
+
+.field {
+  display: grid;
+  gap: .4rem;
+}
+
+.field label {
+  font-family: var(--font-label);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.field input,
+.field textarea,
+.field select {
+  width: 100%;
+  min-height: 3.1rem;
+  padding: .7rem .9rem;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  background: var(--white);
+  color: var(--text);
+  transition: box-shadow .2s ease;
+}
+
+.field textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.field input:focus-visible,
+.field textarea:focus-visible,
+.field select:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--marker), 0 0 0 4px var(--ink);
+}
+
+.field.is-invalid input,
+.field.is-invalid textarea,
+.field.is-invalid select {
+  border-color: var(--danger);
+  box-shadow: inset 0 -3px 0 var(--danger);
+}
+
+.field-hint {
+  color: var(--muted);
+  font-size: 1rem;
+  font-style: italic;
+}
+
+.field-error {
+  color: var(--danger);
+  font-size: .95rem;
+  font-weight: 600;
+}
+
+.optional {
+  color: var(--muted);
+  font-weight: 500;
+  letter-spacing: .04em;
+  text-transform: none;
+}
+
+/* Champ piège pour les robots : invisible et hors du parcours clavier */
+.hp {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.notice {
+  padding: .8rem 1rem;
+  border-left: 4px solid var(--warn);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.notice--error {
+  border-left-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.notice--ok {
+  border-left-color: var(--ok);
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.spinner {
+  display: inline-block;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 2px solid var(--hair);
+  border-top-color: var(--red);
+  border-radius: 50%;
+  animation: spin .9s linear infinite;
+}
+
+/* ── Photos ────────────────────────────────────────────────────────────── */
+/* Les photos du salon montrent des couleurs de cheveux : elles s'affichent telles quelles,
+   dans un cadre au filet d'encre. */
+
+.frame {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--ink);
+  background: var(--paper-2);
+}
+
+/* La photo dépasse de 9 % en haut et en bas pour pouvoir glisser (parallaxe)
+   sans jamais découvrir le fond. --p (0 → 1) est fourni par le script de défilement. */
+.frame-inner {
+  position: absolute;
+  inset: -9% 0;
+}
+
+.frame-inner[data-scrub] {
+  transform: translate3d(0, calc((var(--p, .5) - .5) * 14%), 0);
+  will-change: transform;
+}
+
+.frame-inner img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Cadre « entier » : la photo n'est pas rognée (avant / après, nom du salon écrit dans l'image). */
+.frame--whole .frame-inner {
+  inset: 0;
+}
+
+.frame img {
+  transition: transform 1s var(--ease-out);
+}
+
+img.is-missing {
+  object-fit: contain;
+  background: var(--paper-2);
+}
+
+/* ── En-tête ───────────────────────────────────────────────────────────── */
+
+.site-header {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 60;
+  height: var(--header-h);
+  border-bottom: 1px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  transition: transform .5s var(--ease-expo);
+}
+
+.site-header.is-hidden {
+  transform: translateY(-102%);
+}
+
+.site-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  height: 100%;
+  max-width: var(--container);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+/* Le titre du journal, en gothique */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  margin-right: auto;
+  font-family: var(--font-name);
+  font-size: 2.15rem;
+  font-weight: 400;
+  line-height: 1.1;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* Petit téléphone : le nom du salon et le bouton « Sommaire » tiennent côte à côte. */
+@media (max-width: 26rem) {
+  .site-header .brand {
+    font-size: 1.75rem;
+  }
+}
+
+.site-nav ul {
+  display: flex;
+  align-items: center;
+  gap: clamp(.9rem, 2vw, 1.9rem);
+}
+
+.site-nav li a {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: .4rem;
+  min-height: 2.75rem;
+  padding-top: .85rem;
+  font-family: var(--font-label);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+/* Numéro de page devant chaque rubrique */
+.nav-num {
+  color: var(--red);
+  font-family: var(--font-poster);
+  font-size: 1.15rem;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.site-nav li a::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 .55rem;
+  height: 2px;
+  background: var(--ink);
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform .4s var(--ease-expo);
+}
+
+.site-nav li a:hover::after,
+.site-nav a[aria-current="page"]::after {
+  transform: scaleX(1);
+  transform-origin: left;
+}
+
+.nav-meta,
+.menu-toggle {
+  display: none;
+}
+
+.header-cta {
+  margin-left: clamp(.25rem, 1.5vw, 1.25rem);
+}
+
+/* Grand écran : la rubrique « Prendre rendez-vous » est elle-même le bouton rouge. */
+@media (min-width: 62.01rem) {
+  .header-cta {
+    display: none;
+  }
+
+  .site-nav li a {
+    align-items: center;
+    padding-top: 0;
+  }
+
+  .site-nav li a.nav-book {
+    padding: 0 .95rem;
+    background: var(--red);
+    color: #fff;
+    transition: background-color .25s ease;
+  }
+
+  .site-nav li a.nav-book .nav-num {
+    color: #fff;
+  }
+
+  .site-nav li a.nav-book::after {
+    display: none;
+  }
+
+  .site-nav li a.nav-book:hover,
+  .site-nav li a.nav-book[aria-current="page"] {
+    background: var(--ink);
+  }
+}
+
+/* Petit écran : le menu devient le sommaire du journal, pleine page */
+@media (max-width: 62rem) {
+  .menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: .7rem;
+    min-height: 2.75rem;
+    padding: 0 .9rem;
+    border: 1px solid currentColor;
+    background: transparent;
+    color: inherit;
+    font-family: var(--font-label);
+    font-size: .95rem;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+
+  .menu-toggle-bars {
+    display: grid;
+    gap: 5px;
+    width: 1.1rem;
+  }
+
+  .menu-toggle-bars span {
+    height: 1.5px;
+    background: currentColor;
+    transition: transform .45s var(--ease-expo);
+  }
+
+  .nav-open .menu-toggle-bars span:first-child {
+    transform: translateY(3.25px) rotate(45deg);
+  }
+
+  .nav-open .menu-toggle-bars span:last-child {
+    transform: translateY(-3.25px) rotate(-45deg);
+  }
+
+  .site-nav {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 2rem;
+    padding: calc(var(--header-h) + 1.5rem) var(--gutter) max(1.5rem, env(safe-area-inset-bottom));
+    overflow-y: auto;
+    background: var(--paper);
+    visibility: hidden;
+    clip-path: inset(0 0 100% 0);
+    transition: clip-path .6s var(--ease-in-out), visibility 0s linear .6s;
+  }
+
+  .nav-open .site-nav {
+    visibility: visible;
+    clip-path: inset(0);
+    transition: clip-path .6s var(--ease-in-out), visibility 0s;
+  }
+
+  .nav-open .site-header {
+    transform: none;
+  }
+
+  .site-nav ul {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    border-top: 3px solid var(--ink);
+  }
+
+  /* Une ligne de sommaire : numéro, rubrique, grand corps */
+  .site-nav li a {
+    display: flex;
+    gap: 1rem;
+    padding-block: .9rem;
+    border-bottom: 1px solid var(--ink);
+    font-family: var(--font-poster);
+    font-size: clamp(2.7rem, 12.5vw, 4rem);
+    font-weight: 400;
+    letter-spacing: .005em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .site-nav li a::after {
+    display: none;
+  }
+
+  .site-nav .nav-num {
+    min-width: 1.6rem;
+    font-size: 1.5rem;
+  }
+
+  .site-nav a[aria-current="page"] {
+    color: var(--red);
+  }
+
+  .site-nav li {
+    opacity: 0;
+    transform: translateY(1.5rem);
+    transition: opacity .25s ease, transform .25s ease;
+  }
+
+  .nav-open .site-nav li {
+    opacity: 1;
+    transform: none;
+    transition: opacity .5s ease, transform .8s var(--ease-expo);
+  }
+
+  .nav-open .site-nav li:nth-child(1) { transition-delay: .16s; }
+  .nav-open .site-nav li:nth-child(2) { transition-delay: .21s; }
+  .nav-open .site-nav li:nth-child(3) { transition-delay: .26s; }
+  .nav-open .site-nav li:nth-child(4) { transition-delay: .31s; }
+  .nav-open .site-nav li:nth-child(5) { transition-delay: .36s; }
+
+  .nav-meta {
+    display: block;
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  .nav-meta a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+    color: var(--ink);
+  }
+
+  .nav-open body {
+    overflow: hidden;
+  }
+}
+
+@media (max-width: 46rem) {
+  .header-cta {
+    display: none;
+  }
+}
+
+/* ── Pied de page : « tournez la page », puis l'ours ───────────────────── */
+
+.site-footer {
+  margin-top: clamp(2rem, 5vw, 4rem);
+}
+
+.pager {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 4px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+}
+
+.pager-link {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 5.5rem;
+  padding: 1.1rem 0;
+  font-family: var(--font-poster);
+  font-size: clamp(2.1rem, 5vw, 3.9rem);
+  font-weight: 400;
+  letter-spacing: .005em;
+  line-height: .95;
+  text-decoration: none;
+  transition: background-color .25s ease;
+  text-transform: uppercase;
+}
+
+.pager-link small {
+  display: block;
+  margin-bottom: .35rem;
+  color: var(--red);
+  font-family: var(--font-label);
+  font-size: .98rem;
+  font-weight: 700;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.pager-link .icon {
+  width: clamp(1.6rem, 3vw, 2.4rem);
+  height: clamp(1.6rem, 3vw, 2.4rem);
+  transition: transform .5s var(--ease-expo);
+}
+
+.pager-link--prev {
+  padding-right: 1rem;
+  border-right: 1px solid var(--ink);
+}
+
+.pager-link--prev .icon {
+  transform: rotate(180deg);
+}
+
+.pager-link--next {
+  justify-content: flex-end;
+  padding-left: 1rem;
+  text-align: right;
+}
+
+.pager-link:hover {
+  background: var(--marker);
+}
+
+.pager-link--next:hover .icon {
+  transform: translateX(8px);
+}
+
+.pager-link--prev:hover .icon {
+  transform: rotate(180deg) translateX(8px);
+}
+
+.ours {
+  background: var(--paper-2);
+}
+
+.ours-grid {
+  display: grid;
+  gap: 2.25rem 2rem;
+  padding-block: clamp(2.25rem, 5vw, 3.5rem);
+}
+
+.ours-col {
+  display: grid;
+  align-content: start;
+  gap: .7rem;
+}
+
+.ours-col .brand {
+  margin-right: 0;
+  font-size: 2.9rem;
+}
+
+.ours-brand p:not(.open-badge) {
+  font-style: italic;
+}
+
+.ours-title {
+  padding-bottom: .4rem;
+  border-bottom: 1px solid var(--ink);
+  font-family: var(--font-label);
+  font-size: .95rem;
+  font-weight: 700;
+  letter-spacing: .065em;
+  text-transform: uppercase;
+}
+
+.ours-list {
+  display: grid;
+}
+
+.ours-list .link {
+  overflow-wrap: anywhere;
+}
+
+.ours-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .25rem 2rem;
+  padding-block: .9rem max(.9rem, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--ink);
+  font-family: var(--font-label);
+  font-size: .9rem;
+  font-weight: 500;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.ours-bottom ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.75rem;
+}
+
+.ours-bottom a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  text-decoration: none;
+}
+
+.ours-bottom a:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--red);
+  text-underline-offset: .25em;
+}
+
+@media (min-width: 40rem) {
+  .ours-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 64rem) {
+  .ours-grid {
+    grid-template-columns: 1.2fr .9fr 1.3fr 1fr;
+  }
+}
+
+/* ── Apparitions au défilement ─────────────────────────────────────────── */
+
+/* L'état masqué ne s'applique que si JavaScript est actif (classe posée par boot.js).
+   --d : délai propre à l'élément (data-delay, ou rang dans un groupe data-stagger). */
+.js [data-reveal]:not([data-reveal="lines"], [data-reveal="clip"], [data-reveal="stamp"]) {
+  opacity: 0;
+  transform: translate3d(0, 1.5rem, 0);
+}
+
+.js [data-reveal].is-in {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity .7s ease var(--d, 0s),
+    transform 1s var(--ease-expo) var(--d, 0s),
+    translate .5s var(--ease-expo),
+    background-color .25s ease;
+}
+
+/* Titres : les mots se composent l'un après l'autre (--i = rang du mot). */
+.js [data-reveal="lines"] .w-i {
+  transform: translate3d(0, 122%, 0);
+}
+
+.js [data-reveal="lines"].is-in .w-i {
+  transform: none;
+  transition: transform 1s var(--ease-expo) calc(var(--d, 0s) + var(--i, 0) * 60ms);
+}
+
+/* Photos : elles s'impriment de haut en bas pendant que l'image dézoome.
+   Le masque est posé sur le contenu, pas sur l'élément observé : un élément entièrement
+   masqué par son propre clip-path n'est jamais vu « à l'écran » par IntersectionObserver. */
+.js [data-reveal="clip"] > * {
+  clip-path: inset(0 0 100% 0);
+}
+
+.js [data-reveal="clip"].is-in > * {
+  clip-path: inset(0 0 0 0);
+  transition: clip-path 1.3s var(--ease-in-out) var(--d, 0s);
+}
+
+.js [data-reveal="clip"] img {
+  scale: 1.2;
+}
+
+.js [data-reveal="clip"].is-in img {
+  scale: 1;
+  transition: scale 1.9s var(--ease-out) var(--d, 0s), filter .5s ease, transform 1s var(--ease-out);
+}
+
+/* Tampons : ils claquent sur la page — apparition nette, grande échelle vers la taille juste. */
+.js [data-reveal="stamp"] {
+  opacity: 0;
+  scale: 1.9;
+  rotate: -24deg;
+}
+
+.js [data-reveal="stamp"].is-in {
+  opacity: 1;
+  scale: 1;
+  rotate: var(--tilt, 0deg);
+  transition:
+    opacity .01s linear var(--d, 0s),
+    scale .55s var(--ease-expo) var(--d, 0s),
+    rotate .55s var(--ease-expo) var(--d, 0s),
+    translate .5s var(--ease-expo);
+}
+
+/* Filet de sécurité : si le script principal n'a pas démarré, tout est affiché. */
+.reveal-all [data-reveal],
+.reveal-all [data-reveal] > *,
+.reveal-all [data-reveal] .w-i {
+  opacity: 1 !important;
+  transform: none !important;
+  clip-path: none !important;
+}
+
+.reveal-all [data-reveal="clip"] img {
+  scale: 1 !important;
+}
+
+.reveal-all [data-reveal="stamp"] {
+  scale: 1 !important;
+  rotate: var(--tilt, 0deg) !important;
+}
+
+/* ── Rideau d'ouverture (une fois par visite) ──────────────────────────── */
+/* Le journal du jour, coupé en deux d'un coup de ciseaux : les moitiés s'écartent sur la une. */
+
+.intro {
+  display: none;
+}
+
+.intro-on .intro {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: block;
+  animation: intro-gone .01s linear 2.3s both;
+}
+
+.intro-half {
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 50%;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.intro-half--top {
+  top: 0;
+  animation: intro-up .9s var(--ease-in-out) 1.35s both;
+}
+
+.intro-half--bottom {
+  bottom: 0;
+  animation: intro-down .9s var(--ease-in-out) 1.35s both;
+}
+
+/* Le même titre dans les deux moitiés, centré sur la ligne de coupe */
+.intro-half p {
+  position: absolute;
+  right: 0;
+  left: 0;
+  margin-top: -.5em;
+  font-family: var(--font-name);
+  font-size: clamp(3.2rem, 13vw, 10.5rem);
+  font-weight: 400;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  animation: fade-up .8s var(--ease-expo) .1s both;
+}
+
+.intro-half--top p { top: 100%; }
+.intro-half--bottom p { top: 0; }
+
+.intro-date {
+  position: absolute;
+  top: calc(50% + clamp(2.6rem, 8vw, 6.5rem));
+  right: 0;
+  left: 0;
+  font-family: var(--font-label);
+  font-size: .95rem;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-align: center;
+  text-transform: uppercase;
+  animation: fade-up .8s var(--ease-expo) .3s both, fade-out .2s linear 1.3s forwards;
+}
+
+/* Le trait de coupe, et les ciseaux qui le parcourent de gauche à droite */
+.intro-cut {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 0;
+  animation: fade-out .15s linear 1.35s forwards;
+}
+
+.intro-cut::before {
+  content: "";
+  position: absolute;
+  inset: -1px 0 auto;
+  border-top: 2px dashed var(--red);
+  animation: intro-line .6s var(--ease-in-out) .7s both;
+}
+
+.intro-cut .icon {
+  position: absolute;
+  top: -1.15rem;
+  left: -2.3rem;
+  width: 2.3rem;
+  height: 2.3rem;
+  color: var(--red);
+  animation: intro-scissors .6s var(--ease-in-out) .7s both;
+}
+
+/* ── Barre de progression de lecture ───────────────────────────────────── */
+
+.scroll-progress {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 70;
+  height: 3px;
+  background: var(--red);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+/* ── Curseur d'accompagnement (souris uniquement) ──────────────────────── */
+
+.cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 150;
+  display: grid;
+  place-items: center;
+  width: 5.25rem;
+  height: 5.25rem;
+  margin: -2.625rem 0 0 -2.625rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .3s ease;
+}
+
+.cursor.is-visible {
+  opacity: 1;
+}
+
+.cursor-ring {
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--red);
+  border-radius: 50%;
+  transform: scale(.14);
+  transition: transform .45s var(--ease-expo), background-color .25s ease;
+}
+
+.cursor.is-link .cursor-ring {
+  transform: scale(.44);
+}
+
+.cursor.is-label .cursor-ring {
+  background: var(--red);
+  transform: scale(1);
+}
+
+.cursor-label {
+  position: relative;
+  color: #fff;
+  font-family: var(--font-label);
+  font-size: .86rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  opacity: 0;
+  transform: scale(.6);
+  transition: opacity .2s ease, transform .45s var(--ease-expo);
+}
+
+.cursor.is-label .cursor-label {
+  opacity: 1;
+  transform: none;
+}
+
+/* ── On tourne la page (navigateurs compatibles) ───────────────────────── */
+
+@view-transition {
+  navigation: auto;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  ::view-transition-image-pair(root) {
+    isolation: auto;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    mix-blend-mode: normal;
+  }
+
+  /* La page qu'on quitte pivote autour de la reliure (bord gauche) ; la suivante attend dessous. */
+  ::view-transition-old(root) {
+    z-index: 2;
+    transform-origin: 0 50%;
+    animation: page-turn .75s var(--ease-in-out) both;
+  }
+
+  ::view-transition-new(root) {
+    z-index: 1;
+    animation: page-under .75s var(--ease-in-out) both;
+  }
+}
+
+/* ── Images clés ───────────────────────────────────────────────────────── */
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(47, 165, 107, .55); }
+  70% { box-shadow: 0 0 0 .6rem rgba(47, 165, 107, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(47, 165, 107, 0); }
+}
+
+@keyframes magic {
+  to { background-position: -150% 0; }
+}
+
+@keyframes blink {
+  50% { opacity: .2; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes marquee {
+  to { transform: translateX(-50%); }
+}
+
+@keyframes page-turn {
+  to { transform: perspective(2400px) rotateY(-88deg); filter: brightness(.55); }
+}
+
+@keyframes page-under {
+  from { filter: brightness(.72); }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(1.5rem); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+
+@keyframes fade-out {
+  to { opacity: 0; }
+}
+
+/* La languette pivote, se détache et tombe ; il ne reste que le bout déchiré. */
+@keyframes tear {
+  0% { background: var(--white); color: var(--ink); border-bottom-color: var(--ink); transform: none; opacity: 1; }
+  30% { background: var(--marker); color: var(--ink); transform: rotate(-6deg) translateY(.4rem); opacity: 1; }
+  99% { background: var(--marker); color: var(--ink); transform: rotate(-14deg) translateY(5rem); opacity: 0; }
+  100% { background: transparent; color: transparent; transform: none; opacity: 1; }
+}
+
+@keyframes intro-line {
+  from { clip-path: inset(-2px 100% -2px 0); }
+  to { clip-path: inset(-2px 0 -2px 0); }
+}
+
+@keyframes intro-scissors {
+  to { transform: translateX(calc(100vw + 2.3rem)); }
+}
+
+@keyframes intro-up {
+  to { transform: translateY(-101%); }
+}
+
+@keyframes intro-down {
+  to { transform: translateY(101%); }
+}
+
+@keyframes intro-gone {
+  to { visibility: hidden; }
+}
+
+/* ── Mouvement réduit ──────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0s !important;
+    transition-duration: .001ms !important;
+    transition-delay: 0s !important;
+  }
+
+  .js [data-reveal],
+  .js [data-reveal] > *,
+  .js [data-reveal] .w-i {
+    opacity: 1 !important;
+    transform: none !important;
+    clip-path: none !important;
+  }
+
+  .js [data-reveal="clip"] img {
+    scale: 1 !important;
+  }
+
+  .js [data-reveal="stamp"] {
+    scale: 1 !important;
+    rotate: var(--tilt, 0deg) !important;
+  }
+
+  .frame-inner {
+    inset: 0;
+    transform: none !important;
+  }
+
+  .intro,
+  .cursor {
+    display: none !important;
+  }
+
+  .ticker-track,
+  .stamp--solid > svg:not(.icon) {
+    animation: none;
+  }
+}
+
+/* ── Téléphone : la réservation à portée de pouce ──────────────────────── */
+/* Une barre rouge en bas de l'écran, avec le prochain créneau libre. Elle n'existe que sur
+   petit écran et n'apparaît qu'une fois la page entamée (classe dock-on, posée par site.js). */
+
+.dock {
+  display: none;
+}
+
+@media (max-width: 46rem) {
+  .dock {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 55;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 3.75rem;
+    padding: .55rem var(--gutter) calc(.55rem + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--ink);
+    background: var(--red);
+    color: #fff;
+    text-decoration: none;
+    transition: transform .5s var(--ease-expo), background-color .2s ease;
+  }
+
+  .js .dock {
+    transform: translateY(105%);
+  }
+
+  .js.dock-on .dock {
+    transform: none;
+  }
+
+  .js.nav-open .dock {
+    transform: translateY(105%);
+  }
+
+  .dock:active {
+    background: var(--ink);
+  }
+
+  .dock-text {
+    display: grid;
+    min-width: 0;
+    line-height: 1.15;
+  }
+
+  .dock-label {
+    font-family: var(--font-label);
+    font-size: .86rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    opacity: .9;
+  }
+
+  .dock-slot {
+    overflow: hidden;
+    font-family: var(--font-head);
+    font-size: 1.2rem;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dock-go {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: .4rem;
+    min-height: 2.6rem;
+    padding: 0 .9rem;
+    background: #fff;
+    color: var(--ink);
+    font-family: var(--font-label);
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+
+  /* Le bas du pied de page ne doit pas rester caché derrière la barre. */
+  body:has(.dock) .ours-bottom {
+    padding-bottom: calc(4.6rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* ── Au doigt : chaque appui se voit ───────────────────────────────────── */
+/* (Le survol n'existe pas sur un écran tactile : c'est l'appui qui répond.) */
+
+a,
+button,
+summary,
+label {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (hover: none) {
+  .btn:not(:disabled):active {
+    background: var(--hover-bg);
+    color: var(--hover-fg);
+  }
+
+  .ad:active,
+  .quote-row:active,
+  .index-list a:active,
+  .pager-link:active,
+  .masthead-ear--slot:active,
+  .menu-item:active,
+  .day--open:active,
+  .stepper-item:not(:disabled, [aria-current="step"]):active,
+  .tab:not(:disabled, [aria-pressed="true"]):active {
+    background: var(--marker);
+  }
+
+  .slot-box:active {
+    border-color: var(--red);
+    background: var(--red);
+  }
+
+  .site-nav li a:active {
+    color: var(--red);
+  }
+}

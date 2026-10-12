@@ -1,0 +1,39 @@
+# Met en ligne la démonstration du site sur GitHub Pages.
+# Elle est refaite à chaque modification, et chaque nuit pour que la date du jour,
+# le prochain créneau et les jours proposés restent justes.
+name: Démonstration en ligne
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '10 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Fabriquer la démonstration
+        run: node scripts/export-demo.js _site --base=/${{ github.event.repository.name }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

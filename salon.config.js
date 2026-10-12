@@ -1,0 +1,148 @@
+'use strict';
+
+/**
+ * Toutes les informations du salon sont ici.
+ * Modifiez ce fichier puis relancez le serveur : le site, la réservation
+ * et l'espace salon se mettent à jour.
+ *
+ * ⚠ Les valeurs marquées « PROVISOIRE » sont des exemples à remplacer.
+ */
+
+module.exports = {
+  name: "L'atelier de Cyrille",
+  owner: 'Cyrille',
+  tagline: 'Coiffeuse',
+  description:
+    "L'atelier de Cyrille : coupes, brushings, colorations, balayages, ombrés, lissages. Réservation en ligne en direct, règlement sur place.",
+
+  // Le gros titre de la une, ligne par ligne. Un mot entre _tirets bas_ est écrit en cursive
+  // framboise ; entre *étoiles*, en cursive multicolore. Sur grand écran, les lignes se suivent
+  // sur une seule ; sur téléphone, elles s'empilent. La taille s'ajuste toute seule.
+  headline: ['Cyrille,', 'votre coiffeuse', '(presque)', '*magicienne*'],
+
+  // Adresse publique du site une fois en ligne (ex. 'https://www.latelier-de-cyrille.fr').
+  // Laissez vide tant que le site n'a pas de nom de domaine.
+  siteUrl: '',
+
+  // Coordonnées. Laissez vide ('') ce que le salon n'utilise pas : la ligne disparaît du site.
+  contact: {
+    phone: '07 45 07 50 16',
+    email: '',
+    facebook: 'https://www.facebook.com/latelierby',
+    messenger: 'https://www.facebook.com/messages/t/latelierby/',
+    instagram: '',
+  },
+
+  // Adresse (sert aussi à Google Maps)
+  address: {
+    street: '9 Route de Lille',
+    postalCode: '62218',
+    city: 'Loison-sous-Lens',
+    // Optionnel : texte exact à chercher dans Google Maps (nom de la fiche Google, par exemple).
+    mapsQuery: '',
+    // Optionnel : indications pour venir, une par ligne (stationnement, bus…).
+    access: [],
+  },
+
+  timezone: 'Europe/Paris',
+
+  // Horaires. 0 = dimanche, 1 = lundi … 6 = samedi.
+  // Une journée peut avoir plusieurs plages (pause déjeuner). Tableau vide = fermé.
+  hours: {
+    1: [['09:30', '18:00']],
+    2: [['09:30', '18:00']],
+    3: [['09:30', '18:00']],
+    4: [['09:30', '18:00']],
+    5: [['09:30', '18:00']],
+    6: [],
+    0: [],
+  },
+
+  booking: {
+    slotStep: 30,          // un créneau toutes les 30 minutes
+    minNoticeMinutes: 120, // on ne réserve pas en ligne moins de 2 h à l'avance
+    maxDaysAhead: 60,      // réservation ouverte sur 60 jours
+    maxActivePerPhone: 3,  // rendez-vous à venir autorisés par numéro de téléphone
+    retentionDays: 365,    // les rendez-vous passés sont effacés après un an
+    paymentNote: 'On règle sur place, au salon, après la prestation.',
+  },
+
+  // La carte du salon (tarifs relevés sur l'affichette de Cyrille).
+  //   price  : un tarif unique ;
+  //   prices : un tarif selon la longueur — [cheveux courts, mi-longs, longs] ;
+  //   priceFrom: true : affiché « dès … ».
+  //
+  // ⚠ PROVISOIRE — les DURÉES (en minutes, multiples de slotStep) ne figurent pas sur la carte :
+  // ce sont des estimations. Elles décident des créneaux proposés : à faire valider par Cyrille.
+  priceNote: 'Tarifs « à partir de ». Supplément pour les cheveux très longs.',
+  services: [
+    {
+      category: 'Coupes et brushing',
+      items: [
+        { id: 'coupe-brushing', name: 'Coupe brushing', duration: 60, prices: [25, 30, 45] },
+        { id: 'coupe-fille', name: 'Filles', duration: 30, price: 15, priceFrom: true },
+        { id: 'coupe-homme', name: 'Coupe homme / garçon', duration: 30, price: 13 },
+        { id: 'pointes', name: 'Pointes', duration: 30, price: 10 },
+      ],
+    },
+    {
+      category: 'Colorations et techniques',
+      items: [
+        { id: 'patine', name: 'Patine', duration: 60, prices: [35, 45, 50] },
+        { id: 'coloration', name: 'Coloration', duration: 90, prices: [40, 50, 65] },
+        { id: 'meches', name: 'Mèches', duration: 120, prices: [55, 65, 80] },
+        { id: 'balayage', name: 'Balayage', duration: 150, prices: [75, 85, 100] },
+        { id: 'micro-balayage', name: 'Micro-balayage', duration: 180, prices: [85, 105, 125] },
+        { id: 'ombre-patine', name: 'Ombré patine', duration: 180, prices: [85, 105, 125] },
+        { id: 'ombre-complet', name: 'Ombré complet', duration: 210, prices: [95, 130, 155] },
+        { id: 'lissage-tanin', name: 'Lissage tanin', duration: 180, prices: [90, 150, 180] },
+      ],
+    },
+    {
+      category: 'Soins capillaires',
+      items: [
+        { id: 'soin-hydratant', name: 'Soin hydratant', duration: 30, price: 5 },
+        { id: 'soin-chaleur', name: 'Soin chaleur', duration: 30, price: 17 },
+        // Deux tarifs sur la carte, sans précision : affichés « 30 € / 40 € ».
+        { id: 'soin-ultra', name: 'Soin ultra', duration: 30, prices: [30, 40] },
+      ],
+    },
+  ],
+
+  // Prestations mises en avant à la une.
+  featuredServices: ['coupe-brushing', 'coloration', 'balayage', 'lissage-tanin'],
+
+  // Texte de présentation, facultatif. Laissez vide : la une affiche alors les photos en grand.
+  // Si Cyrille veut écrire quelques lignes sur son salon, mettez un paragraphe par ligne, par exemple :
+  //   paragraphs: ["Première phrase de Cyrille.", "Deuxième paragraphe."],
+  // Le texte s'affichera à la une, en colonne à côté de la photo.
+  about: {
+    title: '',
+    paragraphs: [],
+  },
+
+  // Les photos du salon, rangées dans public/photos/.
+  //   hero   : la grande photo de la une ;
+  //   second : la photo placée à côté (facultatif) ;
+  //   gallery: la page « En images » et la bande de photos de la une.
+  // ratio : le format de la photo ('3/4' ou '4/5' portrait, '1/1' carré, '4/3' paysage), pour ne rien couper.
+  photos: {
+    hero: { src: '/photos/ombre-brun-blond.webp', alt: 'Ombré, du brun au blond', ratio: '3/4' },
+    second: { src: '/photos/avant-apres-du-brun-au-blond.webp', alt: 'Avant et après : du brun au blond', ratio: '1/1' },
+    gallery: [
+      { src: '/photos/avant-apres-du-brun-au-blond.webp', alt: 'Avant et après : du brun au blond', ratio: '1/1' },
+      { src: '/photos/ombre-brun-blond.webp', alt: 'Ombré, du brun au blond', ratio: '3/4' },
+      { src: '/photos/avant-apres-carre-balayage.webp', alt: 'Avant et après : carré et balayage', ratio: '1/1' },
+      { src: '/photos/avant-apres-retour-au-brun.webp', alt: 'Avant et après : retour au brun', ratio: '1/1' },
+    ],
+  },
+
+  // PROVISOIRE — mentions légales
+  legal: {
+    company: "L'atelier de Cyrille",
+    status: '[forme juridique à compléter]',
+    siret: '[SIRET à compléter]',
+    publisher: 'Cyrille [nom à compléter]',
+    host: "[nom et adresse de l'hébergeur à compléter]",
+  },
+};

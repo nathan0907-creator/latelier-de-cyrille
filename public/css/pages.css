@@ -1,0 +1,1350 @@
+/* ==========================================================================
+   Atelier de Cyril — les pages du journal
+   La une, la carte, en images, pratique, l'ours, page introuvable.
+
+   Convention : --p (0 → 1) est la progression d'un élément dans le défilement,
+   posée par site.js sur les éléments [data-scrub]. Le CSS décide de l'effet.
+   ========================================================================== */
+
+/* ── La une : manchette ────────────────────────────────────────────────── */
+
+.une {
+  padding-top: var(--header-h);
+}
+
+/* En haut de la une, la manchette porte déjà le titre : celui de la barre attend qu'on ait défilé. */
+.js .page-une .site-header .brand {
+  transition: opacity .35s ease, transform .5s var(--ease-expo);
+}
+
+.js .page-une .site-header:not(.is-solid) .brand {
+  opacity: 0;
+  transform: translateY(.5rem);
+  pointer-events: none;
+}
+
+.masthead {
+  padding-top: clamp(.9rem, 2.4vw, 1.75rem);
+}
+
+.masthead-top {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  gap: .9rem;
+  padding-bottom: clamp(1.3rem, 3vw, 2.1rem);
+}
+
+/* Le titre du journal (petit écran : d'abord le titre, puis les deux oreilles côte à côte) */
+.nameplate {
+  order: -1;
+  grid-column: 1 / -1;
+  font-family: var(--font-name);
+  font-size: clamp(2.4rem, 15.2vw, 9rem);
+  font-weight: 400;
+  line-height: 1.05;
+  text-align: center;
+  white-space: nowrap;
+  padding-bottom: .14em;
+}
+
+.nameplate .w {
+  margin-block: -.14em -.42em;
+  padding-block: .14em .42em;
+}
+
+/* Les « oreilles » : les deux encadrés de part et d'autre du titre */
+.masthead-ear {
+  display: grid;
+  align-content: center;
+  gap: .1rem;
+  padding: .6rem .8rem;
+  border: 1px solid var(--ink);
+  font-family: var(--font-label);
+  font-size: .92rem;
+  font-weight: 600;
+  letter-spacing: .03em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.masthead-ear strong {
+  color: var(--red);
+  font-weight: 700;
+  letter-spacing: .05em;
+}
+
+.masthead-ear--slot {
+  background: var(--white);
+  text-decoration: none;
+  transition: background-color .25s ease;
+}
+
+.masthead-ear--slot [data-next-slot-label] {
+  font-family: var(--font-head);
+  font-size: 1.3rem;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.15;
+  text-transform: none;
+}
+
+/* Petit écran : l'oreille de gauche va à l'essentiel */
+@media (max-width: 34rem) {
+  .masthead-ear-more {
+    display: none;
+  }
+}
+
+.masthead-ear-go {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  font-weight: 700;
+}
+
+.masthead-ear-go .icon {
+  transition: transform .4s var(--ease-out);
+}
+
+.masthead-ear--slot:hover {
+  background: var(--marker);
+}
+
+.masthead-ear--slot:hover .icon {
+  transform: translateX(4px);
+}
+
+/* Le double filet sous la manchette, avec la ligne de devise */
+.masthead-line {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: .1rem 1.4rem;
+  padding-block: .65rem .5rem;
+  border-top: 4px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+  font-family: var(--font-label);
+  font-size: .98rem;
+  font-weight: 700;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.masthead-line::before {
+  content: "";
+  position: absolute;
+  inset: 3px 0 auto;
+  height: 1px;
+  background: var(--ink);
+}
+
+.masthead-line span:first-child {
+  color: var(--red);
+}
+
+@media (min-width: 60rem) {
+  .masthead-top {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: clamp(1rem, 2.5vw, 2.5rem);
+  }
+
+  .nameplate {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: clamp(4.6rem, calc(9.9vw - 1.06rem), 8rem);
+    padding-bottom: 0;
+  }
+
+  .masthead-ear {
+    max-width: 13.5rem;
+  }
+
+  .masthead-ear--slot {
+    grid-column: 3;
+    justify-self: end;
+  }
+
+  .masthead-line {
+    justify-content: space-between;
+  }
+}
+
+/* ── La une : l'article de tête ────────────────────────────────────────── */
+/* Petit écran : titre, photo, texte, marge, l'un sous l'autre.
+   Grand écran : le titre en bandeau d'une marge à l'autre, puis trois colonnes
+   (la photo, l'article, la marge). */
+
+.lead {
+  display: grid;
+  gap: clamp(1.5rem, 4vw, 2.25rem);
+  padding-top: clamp(1.25rem, 3vw, 2rem);
+}
+
+.lead-banner {
+  display: grid;
+  justify-items: start;
+  gap: .55rem;
+  min-width: 0;
+}
+
+/* Téléphone : les lignes s'empilent. La taille est ajustée par site.js (data-fit) pour que la
+   ligne la plus large remplisse l'écran ; celle-ci sert sans script, et de point de départ. */
+.lead .headline--xl {
+  --fit-max: 9rem;
+
+  font-size: clamp(3rem, 18.4vw, 9rem);
+}
+
+.lead-photo .frame {
+  aspect-ratio: 4 / 3;
+}
+
+.lead-text {
+  display: grid;
+  align-content: start;
+  gap: 1.1rem;
+  min-width: 0;
+}
+
+.lead-text .columns {
+  columns: 1;
+  font-size: 1.1rem;
+  line-height: 1.5;
+}
+
+.dateline {
+  font-family: var(--font-label);
+  font-size: .9em;
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.lead-side {
+  display: grid;
+  align-content: start;
+  gap: 1.4rem;
+}
+
+/* Le créneau du jour : encadré noir, la date en grand */
+.slot-box {
+  gap: .75rem;
+  text-decoration: none;
+  transition: background-color .3s ease, border-color .3s ease;
+}
+
+.slot-box-label {
+  font-family: var(--font-head);
+  font-size: clamp(1.9rem, 3.4vw, 2.3rem);
+  font-weight: 700;
+  letter-spacing: -.01em;
+  line-height: 1.08;
+}
+
+.slot-box-go {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  color: var(--red-light);
+  font-family: var(--font-label);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  transition: color .3s ease;
+}
+
+.slot-box-go .icon {
+  transition: transform .4s var(--ease-out);
+}
+
+.slot-box:hover {
+  border-color: var(--red);
+  background: var(--red);
+}
+
+.slot-box:hover .slot-box-go {
+  color: #fff;
+}
+
+.slot-box:hover .icon {
+  transform: translateX(5px);
+}
+
+/* Congés et fermetures : la brève passe au surligneur */
+.briefs li.briefs-alert {
+  margin-inline: -.5rem;
+  padding: .55rem .5rem;
+  border-bottom: 0;
+  background: var(--marker);
+}
+
+.briefs li.briefs-alert + li {
+  padding-top: .6rem;
+}
+
+/* En bref, avec son coup de tampon dans le coin */
+.briefs-box {
+  position: relative;
+}
+
+.briefs-stamp {
+  --tilt: 13deg;
+
+  position: absolute;
+  top: -1.7rem;
+  right: -.8rem;
+  width: 5.6rem;
+  opacity: .9;
+  mix-blend-mode: multiply;
+}
+
+/* Dans ce numéro : le sommaire, en bandeau sous l'article de tête */
+.lead-index {
+  display: grid;
+  border: 1px solid var(--ink);
+  background: var(--white);
+}
+
+.lead-index-title {
+  display: flex;
+  align-items: center;
+  padding: .6rem 1rem;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-label);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.index-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.index-list li {
+  border-top: 1px solid var(--ink);
+}
+
+.index-list li:nth-child(even) {
+  border-left: 1px solid var(--ink);
+}
+
+.index-list a {
+  display: grid;
+  align-content: start;
+  gap: .15rem;
+  height: 100%;
+  padding: .75rem 1rem .85rem;
+  text-decoration: none;
+  transition: background-color .25s ease;
+  min-height: 4.25rem;
+}
+
+.index-page {
+  color: var(--red);
+  font-family: var(--font-label);
+  font-size: .98rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.index-name {
+  font-family: var(--font-head);
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  line-height: 1.12;
+}
+
+@media (hover: hover) {
+  .index-list a:hover {
+    background: var(--marker);
+  }
+
+}
+
+/* Écran moyen : la photo et l'article côte à côte, les encadrés de la marge sur un rang */
+@media (min-width: 46rem) {
+  .lead {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    column-gap: clamp(1.5rem, 3vw, 2.25rem);
+  }
+
+  .lead-banner,
+  .lead-side,
+  .lead-index {
+    grid-column: 1 / -1;
+  }
+
+  .lead-index {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .lead-index-title {
+    max-width: 8.5rem;
+  }
+
+  .index-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .index-list li {
+    border-top: 0;
+    border-left: 1px solid var(--ink);
+  }
+
+  .lead-photo .frame {
+    aspect-ratio: 1;
+  }
+
+  .lead-side {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    padding-top: .5rem;
+  }
+
+  /* Sans article : la photo seule, sur toute la largeur */
+  .lead--photo .lead-photo {
+    grid-column: 1 / -1;
+  }
+
+  .lead--photo .lead-photo .frame {
+    aspect-ratio: 16 / 9;
+  }
+}
+
+@media (min-width: 64rem) {
+  .lead {
+    grid-template-columns: minmax(0, 1.42fr) minmax(0, 1fr) 19.5rem;
+    gap: clamp(1.1rem, 2vw, 1.6rem) 0;
+  }
+
+  /* Le bandeau : les trois lignes se suivent sur une seule, tirée d'une marge à l'autre. */
+  .lead .headline--xl {
+    justify-self: stretch;
+    font-size: clamp(2.6rem, 6.3vw, 5.6rem);
+    text-align: justify;
+    text-align-last: justify;
+  }
+
+  .lead .headline--xl .line {
+    display: inline;
+  }
+
+  .lead-photo {
+    grid-column: 1;
+  }
+
+  .lead-text {
+    grid-column: 2;
+    padding-inline: clamp(1.25rem, 2.2vw, 1.75rem);
+  }
+
+  .lead-side {
+    grid-column: 3;
+    grid-template-columns: minmax(0, 1fr);
+    padding-top: 0;
+    padding-left: clamp(1.25rem, 2.2vw, 1.75rem);
+    border-left: 1px solid var(--ink);
+  }
+
+  /* Sans article : la photo occupe les deux premières colonnes */
+  .lead--photo .lead-photo {
+    grid-column: 1 / 3;
+    padding-right: clamp(1.25rem, 2.2vw, 1.75rem);
+  }
+
+  .lead--photo .lead-photo .frame {
+    aspect-ratio: 16 / 9.4;
+  }
+}
+
+/* ── Les tarifs : des lignes de cote, avec points de conduite ──────────── */
+
+/* Le tableau : la prestation à gauche, les prix à droite, une colonne par longueur de cheveux. */
+.prices {
+  --price-col: clamp(3.3rem, 15vw, 8.5rem);
+
+  width: 100%;
+  border-top: 1px solid var(--ink);
+  border-spacing: 0;
+  border-collapse: separate;
+}
+
+.prices th,
+.prices td {
+  padding: .8rem .25rem;
+  border-bottom: 1px solid var(--hair);
+  vertical-align: middle;
+}
+
+/* En-têtes de colonnes */
+.prices thead th {
+  padding-block: .5rem .45rem;
+  border-bottom: 1px solid var(--ink);
+  color: var(--muted);
+  font-family: var(--font-label);
+  font-size: .8rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.prices thead .prices-what {
+  padding-left: 0;
+  text-align: left;
+}
+
+/* « Cheveux » : écrit en toutes lettres quand la place le permet */
+.prices-more {
+  display: none;
+}
+
+.prices-word {
+  white-space: nowrap;
+}
+
+/* La prestation */
+.prices tbody th {
+  padding-left: 0;
+  font-family: var(--font-head);
+  font-size: clamp(1.15rem, 2.6vw, 1.75rem);
+  font-weight: 700;
+  letter-spacing: -.01em;
+  line-height: 1.15;
+  text-align: left;
+}
+
+/* Les prix */
+.prices-length,
+.prices td {
+  width: var(--price-col);
+  text-align: center;
+}
+
+.prices td {
+  border-left: 1px solid var(--hair);
+  font-family: var(--font-head);
+  font-size: clamp(1.1rem, 2.4vw, 1.5rem);
+  font-weight: 700;
+  font-variant-numeric: lining-nums tabular-nums;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+/* La dernière case : réserver cette prestation */
+.prices .prices-go {
+  width: 2.75rem;
+  padding: .3rem 0 .3rem .35rem;
+  border-left: 0;
+  text-align: right;
+}
+
+.prices-book {
+  display: inline-grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 1px solid var(--ink);
+  color: var(--ink);
+  text-decoration: none;
+  transition: background-color .2s ease, color .2s ease;
+}
+
+.prices-book span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.prices-book:active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+@media (hover: hover) {
+  .prices tbody tr:hover th,
+  .prices tbody tr:hover td {
+    background: var(--marker);
+  }
+
+  .prices-book:hover {
+    background: var(--ink);
+    color: var(--paper);
+  }
+}
+
+@media (min-width: 46rem) {
+  .prices th,
+  .prices td {
+    padding: 1rem .75rem;
+  }
+
+  .prices thead th {
+    font-size: .98rem;
+    letter-spacing: .05em;
+  }
+
+  .prices-more {
+    display: block;
+  }
+
+  .prices .prices-go {
+    width: 8.25rem;
+    padding: .5rem 0 .5rem 1rem;
+  }
+
+  /* Le bouton reprend son libellé */
+  .prices-book {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    width: auto;
+    min-height: 2.75rem;
+    height: auto;
+    padding: 0 1rem;
+    font-family: var(--font-label);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+
+  .prices-book span {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+  }
+}
+
+/* ── En images : la bande de photos ────────────────────────────────────── */
+
+.hgallery {
+  padding-block: clamp(2.5rem, 6vw, 5rem);
+}
+
+/* Par défaut (mobile, mouvement réduit) : une bande que l'on fait glisser au doigt. */
+.hgallery-viewport {
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+
+.hgallery-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.hgallery-track {
+  display: flex;
+  gap: clamp(.9rem, 2vw, 1.75rem);
+  width: max-content;
+  height: clamp(18rem, min(60vh, 96vw), 32rem);
+  padding-inline: var(--gutter);
+}
+
+.hgallery-item {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: 100%;
+  scroll-snap-align: center;
+}
+
+.hgallery-item .frame {
+  height: 100%;
+  aspect-ratio: 4 / 5;
+}
+
+/* La légende tient sur une ligne, à la largeur de sa photo : sa taille ne doit dépendre
+   de rien, sinon c'est elle qui déciderait de la hauteur (donc de la largeur) du cadre. */
+.hgallery-item .caption {
+  width: 0;
+  min-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hgallery-item--1 {
+  align-self: flex-end;
+  height: 82%;
+}
+
+.hgallery-item--2 {
+  height: 91%;
+}
+
+.hgallery-item--1 .frame {
+  aspect-ratio: 1;
+}
+
+.hgallery-item--end {
+  display: grid;
+  grid-template-rows: none;
+  place-items: center;
+  padding-inline: clamp(2rem, 6vw, 6rem);
+}
+
+/* Grand écran, mouvement autorisé (classe posée par site.js) : la section s'épingle
+   et le défilement vertical fait avancer la bande. --travel = distance à parcourir. */
+.can-pin .hgallery {
+  height: calc(100vh + var(--travel, 0px));
+  padding-block: 0;
+}
+
+.can-pin .hgallery-sticky {
+  position: sticky;
+  top: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+  padding-block: calc(var(--header-h) + clamp(.75rem, 2.5vh, 1.75rem)) clamp(1.25rem, 3.5vh, 2.5rem);
+  overflow: hidden;
+}
+
+.can-pin .hgallery .section-bar {
+  margin-bottom: clamp(1rem, 3vh, 2rem);
+}
+
+.can-pin .hgallery-viewport {
+  min-height: 0;
+  overflow: visible;
+}
+
+.can-pin .hgallery-track {
+  height: 100%;
+  transform: translate3d(calc(var(--p, 0) * var(--travel, 0px) * -1), 0, 0);
+  will-change: transform;
+}
+
+/* ── Prendre rendez-vous (la une) ──────────────────────────────────────── */
+/* Une affichette pour choisir un jour, et à côté les façons de réserver. */
+
+.annonces {
+  display: grid;
+  gap: clamp(2.5rem, 5vw, 3.5rem);
+  padding-top: .75rem;
+}
+
+/* L'affichette, punaisée un peu de travers */
+.annonces .flyer {
+  justify-self: center;
+  width: min(100%, 27rem);
+  box-shadow: 0 1.4rem 2.2rem -1.6rem rgba(36, 26, 28, .55);
+  rotate: -1.4deg;
+}
+
+.annonces .flyer-title {
+  font-size: clamp(3.4rem, 15vw, 5rem);
+}
+
+.annonces .flyer-title span {
+  white-space: nowrap;
+}
+
+.annonces .tab {
+  min-height: 8.75rem;
+}
+
+.how-box {
+  align-self: start;
+  gap: 1.25rem;
+  width: 100%;
+  max-width: 30rem;
+  padding: 1.25rem 1.4rem 1.5rem;
+}
+
+.how-box .btn {
+  width: 100%;
+}
+
+@media (min-width: 60rem) {
+  .annonces {
+    grid-template-columns: minmax(0, 27rem) minmax(0, 30rem);
+    align-items: start;
+    justify-content: space-between;
+    gap: clamp(2.5rem, 6vw, 5rem);
+  }
+}
+
+/* ── Carnet pratique (la une) ──────────────────────────────────────────── */
+
+.carnet {
+  display: grid;
+  gap: 2.25rem;
+}
+
+.carnet-col {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: .9rem;
+}
+
+.carnet-col address {
+  font-size: 1.3rem;
+  line-height: 1.3;
+}
+
+.carnet-col .hours {
+  justify-self: stretch;
+}
+
+.carnet-photo .frame {
+  aspect-ratio: 4 / 3;
+}
+
+@media (min-width: 60rem) {
+  .carnet {
+    grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr) minmax(0, 1.2fr);
+    gap: 0;
+  }
+
+  .carnet > * {
+    padding-inline: clamp(1.25rem, 2.4vw, 2.25rem);
+    border-left: 1px solid var(--hair);
+  }
+
+  .carnet > :first-child {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .carnet > :last-child {
+    padding-right: 0;
+  }
+}
+
+/* ── Page 2 — La carte ─────────────────────────────────────────────────── */
+
+.notice-line {
+  display: inline-flex;
+  align-items: center;
+  gap: .65rem;
+  padding: .5rem .9rem;
+  border: 1px dashed var(--ink);
+  background: var(--white);
+  font-family: var(--font-label);
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.notice-line .icon {
+  color: var(--red);
+}
+
+.menu {
+  display: grid;
+  gap: clamp(2.25rem, 5vw, 3.75rem);
+  padding-bottom: clamp(2.5rem, 6vw, 4.5rem);
+}
+
+.menu-group-title {
+  padding-block: .55rem .5rem;
+  border-top: 4px solid var(--ink);
+  font-family: var(--font-label);
+  font-size: clamp(1.3rem, 2.4vw, 1.75rem);
+  font-weight: 700;
+  letter-spacing: .055em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+/* Courrier des lecteurs */
+.help-band {
+  margin-bottom: clamp(2rem, 5vw, 3.5rem);
+}
+
+.help-band p {
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--ink);
+  border-top-width: 4px;
+  background: var(--paper-2);
+  font-size: 1.15rem;
+}
+
+.help-band strong {
+  font-family: var(--font-label);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+/* ── Page 3 — En images ────────────────────────────────────────────────── */
+
+.masonry {
+  columns: 1;
+  column-gap: clamp(1rem, 2vw, 1.75rem);
+  padding-bottom: clamp(2rem, 5vw, 3.5rem);
+}
+
+.masonry-item {
+  margin-bottom: clamp(1.25rem, 2.4vw, 2rem);
+  break-inside: avoid;
+}
+
+.masonry-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border-radius: 0;
+  cursor: zoom-in;
+}
+
+.masonry-button:focus-visible {
+  outline-offset: -5px;
+}
+
+.masonry-button img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.r-4-5 .masonry-button { aspect-ratio: 4 / 5; }
+.r-3-4 .masonry-button { aspect-ratio: 3 / 4; }
+.r-4-3 .masonry-button { aspect-ratio: 4 / 3; }
+.r-1-1 .masonry-button { aspect-ratio: 1; }
+.r-16-9 .masonry-button { aspect-ratio: 16 / 9; }
+
+@media (hover: hover) {
+  .masonry-button:hover img {
+    transform: scale(1.05);
+  }
+}
+
+@media (min-width: 40rem) {
+  .masonry { columns: 2; }
+}
+
+@media (min-width: 64rem) {
+  .masonry { columns: 3; }
+}
+
+/* Visionneuse */
+.lightbox {
+  width: 100vw;
+  max-width: none;
+  height: 100vh;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: clamp(1rem, 4vw, 3rem);
+  border: 0;
+  background: rgba(36, 26, 28, .97);
+  color: var(--paper);
+}
+
+.lightbox[open] {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+  overflow: hidden;
+  animation: fade-in .4s ease both;
+}
+
+.lightbox::backdrop {
+  background: rgba(36, 26, 28, .6);
+}
+
+.lightbox .icon-btn:not(:disabled):hover {
+  border-color: var(--paper);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.lightbox-close {
+  position: absolute;
+  top: clamp(.75rem, 2vw, 1.5rem);
+  right: clamp(.75rem, 2vw, 1.5rem);
+  z-index: 2;
+}
+
+.lightbox-figure {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-items: center;
+  align-self: stretch;
+  justify-items: center;
+  gap: 1rem;
+  min-width: 0;
+  min-height: 0;
+  padding-top: 2.5rem;
+}
+
+.lightbox-figure img {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 100%;
+  min-height: 0;
+  object-fit: contain;
+}
+
+.lightbox figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 60rem;
+  margin: 0;
+  color: var(--muted-on-dark);
+  font-size: 1rem;
+  font-style: italic;
+}
+
+.lightbox figcaption span {
+  margin: 0;
+  font: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.lightbox figcaption .lightbox-count {
+  flex: none;
+  font-family: var(--font-label);
+  font-style: normal;
+  font-variant-numeric: lining-nums tabular-nums;
+  letter-spacing: .04em;
+}
+
+@media (max-width: 40rem) {
+  .lightbox[open] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lightbox-nav {
+    position: absolute;
+    bottom: 4.75rem;
+    z-index: 2;
+    background: rgba(36, 26, 28, .75);
+  }
+
+  .lightbox-prev { left: 1rem; }
+  .lightbox-next { right: 1rem; }
+}
+
+/* ── Page 5 — Pratique ─────────────────────────────────────────────────── */
+
+.find-page {
+  display: grid;
+  gap: clamp(1.25rem, 3vw, 2rem);
+  padding-bottom: clamp(1.25rem, 3vw, 2rem);
+}
+
+.find-card {
+  gap: 1.4rem;
+  padding: 1.25rem 1.4rem 1.5rem;
+}
+
+.info-list {
+  display: grid;
+}
+
+.info-list > div {
+  padding-block: .8rem;
+  border-bottom: 1px dotted var(--hair);
+}
+
+.info-list > div:first-child {
+  padding-top: 0;
+}
+
+.info-list dt {
+  margin-bottom: .15rem;
+  color: var(--red);
+  font-family: var(--font-label);
+  font-size: .92rem;
+  font-weight: 700;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.info-list dd {
+  font-size: 1.15rem;
+  line-height: 1.35;
+}
+
+.map {
+  position: relative;
+  min-height: clamp(25rem, 60vw, 34rem);
+  overflow: hidden;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+}
+
+.map iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  animation: fade-in .8s ease both;
+}
+
+.map-facade {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--paper);
+}
+
+/* Un plan de quartier dessiné au trait, comme un croquis de presse */
+.map-art {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.map-road {
+  position: absolute;
+  background: rgba(248, 241, 234, .1);
+}
+
+.map-road--1 { inset: 34% -10% auto; height: 2.2rem; transform: rotate(-8deg); }
+.map-road--2 { inset: -10% auto -10% 26%; width: 1.5rem; transform: rotate(12deg); }
+.map-road--3 { inset: 74% -10% auto; height: 1.1rem; transform: rotate(4deg); }
+.map-road--4 { inset: -10% 16% -10% auto; width: 2.4rem; transform: rotate(-6deg); }
+
+.map-block {
+  position: absolute;
+  border: 1px dashed rgba(248, 241, 234, .16);
+}
+
+.map-block--1 { inset: 8% auto auto 6%; width: 16%; height: 20%; transform: rotate(-8deg); }
+.map-block--2 { inset: 46% auto auto 38%; width: 30%; height: 22%; transform: rotate(-7deg); }
+.map-block--3 { inset: 8% 24% auto auto; width: 22%; height: 18%; transform: rotate(-7deg); }
+
+.map-pin {
+  position: absolute;
+  top: 22%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  margin-left: -1.625rem;
+  border-radius: 50%;
+  background: var(--red);
+  color: #fff;
+  animation: pin-drop 1s var(--ease-expo) .3s both;
+}
+
+.map-pin::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--red-light);
+  border-radius: 50%;
+  animation: ping 2.6s ease-out 1.2s infinite;
+}
+
+.map-pin .icon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.map-facade-copy {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 1rem;
+  max-width: 27rem;
+  margin-top: 7rem;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.map-address {
+  font-family: var(--font-head);
+  font-size: clamp(1.5rem, 2.8vw, 2.1rem);
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.15;
+}
+
+.map-note {
+  color: var(--muted-on-dark);
+  font-size: 1rem;
+  font-style: italic;
+}
+
+.map-facade .btn--accent:not(:disabled):hover {
+  border-color: var(--paper);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.map-facade .link:hover {
+  background: var(--paper);
+}
+
+.find-extra {
+  display: grid;
+  gap: clamp(1.25rem, 3vw, 2rem);
+  padding-bottom: clamp(2rem, 5vw, 3.5rem);
+}
+
+@media (min-width: 52rem) {
+  .find-extra {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+@media (min-width: 60rem) {
+  .find-page {
+    grid-template-columns: minmax(0, 23rem) minmax(0, 1fr);
+  }
+}
+
+/* ── L'ours : mentions légales ─────────────────────────────────────────── */
+
+.prose {
+  padding-bottom: clamp(2rem, 5vw, 3.5rem);
+  columns: 2 24rem;
+  column-gap: clamp(2rem, 4vw, 3.5rem);
+  column-rule: 1px solid var(--hair);
+}
+
+.prose section {
+  margin-bottom: 2.25rem;
+  break-inside: avoid;
+  scroll-margin-top: calc(var(--header-h) + 1.5rem);
+}
+
+.prose h2 {
+  margin-bottom: .8rem;
+  padding-top: .5rem;
+  border-top: 3px solid var(--ink);
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -.012em;
+}
+
+.prose p + p {
+  margin-top: .8rem;
+}
+
+/* ── Erratum : page introuvable ────────────────────────────────────────── */
+
+.not-found {
+  position: relative;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 1.4rem;
+  min-height: 74vh;
+  padding-block: 3rem 4rem;
+}
+
+.not-found .headline {
+  max-width: 62rem;
+}
+
+.not-found-stamp {
+  --tilt: 14deg;
+
+  position: absolute;
+  top: clamp(1.5rem, 8vh, 5rem);
+  right: clamp(0rem, 4vw, 4rem);
+  width: clamp(7rem, 16vw, 11.5rem);
+  opacity: .85;
+  mix-blend-mode: multiply;
+}
+
+/* ── Images clés ───────────────────────────────────────────────────────── */
+
+@keyframes pin-drop {
+  from { opacity: 0; transform: translateY(-2.5rem); }
+}
+
+@keyframes ping {
+  from { opacity: .9; transform: scale(1); }
+  to { opacity: 0; transform: scale(2.4); }
+}
+
+/* ── Les photos du salon : chaque cadre prend le format de sa photo ────── */
+/* (Rien n'est coupé : sur un « avant / après », le nom du salon est écrit dans l'image.) */
+
+.lead-photo.r-3-4 .frame,
+.hgallery-item.r-3-4 .frame { aspect-ratio: 3 / 4; }
+
+.lead-photo.r-4-5 .frame,
+.hgallery-item.r-4-5 .frame { aspect-ratio: 4 / 5; }
+
+.lead-photo.r-1-1 .frame,
+.hgallery-item.r-1-1 .frame { aspect-ratio: 1; }
+
+.lead-photo.r-4-3 .frame,
+.hgallery-item.r-4-3 .frame { aspect-ratio: 4 / 3; }
+
+.lead-photo.r-16-9 .frame,
+.hgallery-item.r-16-9 .frame { aspect-ratio: 16 / 9; }
+
+/* La une avec deux photos : la grande (portrait) et sa voisine (carrée) ont la même hauteur
+   quand leurs colonnes sont dans le rapport 3 pour 4. */
+@media (min-width: 46rem) {
+  .lead--duo {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 4fr);
+    align-items: start;
+  }
+}
+
+@media (min-width: 64rem) {
+  .lead--duo {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 4fr) 19.5rem;
+    column-gap: clamp(1.25rem, 2.2vw, 1.75rem);
+  }
+
+  .lead--duo .lead-photo {
+    grid-column: auto;
+  }
+
+  .lead--duo .lead-side {
+    padding-left: clamp(1.25rem, 2.2vw, 1.75rem);
+  }
+}
+
+/* Carnet pratique sans photo : deux colonnes */
+@media (min-width: 60rem) {
+  .carnet--duo {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+  }
+}
+
+/* Le gros titre de la une passe en bandeau, sur une seule ligne, dès la tablette. */
+@media (min-width: 46rem) {
+  .lead .headline--xl {
+    --fit-max: 7.25rem;
+
+    justify-self: stretch;
+    font-size: clamp(2.6rem, 6.3vw, 5.6rem);
+    text-align: justify;
+    text-align-last: justify;
+  }
+
+  .lead .headline--xl .line {
+    display: inline;
+  }
+}

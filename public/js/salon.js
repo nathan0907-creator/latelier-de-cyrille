@@ -1,0 +1,1017 @@
+// Espace salon : connexion, agenda du jour, liste des rendez-vous, fermetures.
+// Rien n'est chargé tant que la coiffeuse n'est pas connectée ; ensuite tout arrive en direct.
+
+import {
+  h, icon, api, animate, readPageData, debounce, addDays, mondayIndex, formatLong, formatShort,
+  capitalize, fromMinutes, frTime, durationLabel, euros,
+} from './lib.js';
+
+const root = document.querySelector('[data-salon]');
+const toastBox = document.querySelector('[data-toasts]');
+const config = readPageData();
+const BASE_TITLE = document.title;
+const ALERTS_KEY = 'salon-alertes';
+
+const state = {
+  today: '',
+  nowMinutes: 0,
+  bookings: [],
+  closures: [],
+  tab: 'day',
+  day: '',
+  filter: 'upcoming',
+  search: '',
+  fresh: new Set(), // rendez-vous à mettre en évidence quelques secondes
+  alerts: readAlertsPreference(),
+};
+
+const refs = {};
+let source = null;
+let clock = null;
+let detail = null;
+let audio = null;
+
+// ── Petits outils ─────────────────────────────────────────────────────────
+
+/** 0 = dimanche … 6 = samedi, comme les horaires de la configuration. */
+const weekday = date => (mondayIndex(date) + 1) % 7;
+const isActive = booking => booking.status !== 'cancelled';
+const byTime = (a, b) => a.date.localeCompare(b.date) || a.start - b.start;
+const bookingsOn = date => state.bookings.filter(b => b.date === date).sort(byTime);
+const telHref = phone => `tel:${phone.replace(/[^\d+]/g, '')}`;
+const hoursLabel = booking => `${frTime(booking.start)} – ${frTime(booking.start + booking.duration)}`;
+const whenLabel = booking => `${capitalize(formatLong(booking.date))} à ${frTime(booking.start)}`;
+const plural = (count, one, many) => `${count} ${count > 1 ? many : one}`;
+
+const STATUS = { pending: 'À confirmer', confirmed: 'Confirmé', cancelled: 'Annulé' };
+const statusBadge = booking => h('span', { class: `badge badge--${booking.status}` }, STATUS[booking.status]);
+
+function readAlertsPreference() {
+  try {
+    return localStorage.getItem(ALERTS_KEY) === 'oui';
+  } catch {
+    return false;
+  }
+}
+
+function field({ id, label, optional = false, hint = '', control }) {
+  control.id = id;
+  if (hint) control.setAttribute('aria-describedby', `${id}-aide`);
+  return h('div', { class: 'field' },
+    h('label', { for: id }, label, optional ? h('span', { class: 'optional' }, ' (facultatif)') : null),
+    control,
+    hint ? h('p', { class: 'field-hint', id: `${id}-aide` }, hint) : null);
+}
+
+/** « 13 € », ou « dès 25 € » quand le prix dépend de la longueur des cheveux. */
+const priceText = item => `${item.priceFrom ? 'dès ' : ''}${euros(item.price)}`;
+
+function brand() {
+  return h('a', { class: 'brand', href: '/', 'aria-label': `${config.name}, voir le site` }, config.name);
+}
+
+/** Appel réservé à une session connectée : une session expirée ramène à la connexion. */
+async function call(path, options) {
+  try {
+    return await api(path, options);
+  } catch (err) {
+    if (err.status === 401) signedOut('Votre session a expiré. Reconnectez-vous.');
+    throw err;
+  }
+}
+
+// ── Messages ──────────────────────────────────────────────────────────────
+
+function toast(message, { title = '', detail: more = '', action = null, type = '', duration = 6500 } = {}) {
+  const box = h('div', { class: `toast${type ? ` toast--${type}` : ''}` });
+  const dismiss = () => {
+    if (!box.isConnected || box.classList.contains('is-leaving')) return;
+    box.classList.add('is-leaving');
+    setTimeout(() => box.remove(), 350);
+  };
+  box.append(...[
+    title && h('strong', {}, title),
+    h('span', {}, message),
+    more && h('span', {}, more),
+    action && h('button', { type: 'button', class: 'link', onclick: () => { action.run(); dismiss(); } }, action.label),
+  ].filter(Boolean));
+  toastBox.append(box);
+  setTimeout(dismiss, duration);
+}
+
+/** Deux notes brèves, produites par le navigateur (aucun fichier son). */
+function chime() {
+  try {
+    audio ??= new AudioContext();
+    if (audio.state === 'suspended') audio.resume();
+    const start = audio.currentTime;
+    for (const [frequency, at] of [[880, 0], [1174.66, 0.15]]) {
+      const oscillator = audio.createOscillator();
+      const gain = audio.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.value = frequency;
+      gain.gain.setValueAtTime(0.0001, start + at);
+      gain.gain.exponentialRampToValueAtTime(0.18, start + at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + at + 0.5);
+      oscillator.connect(gain).connect(audio.destination);
+      oscillator.start(start + at);
+      oscillator.stop(start + at + 0.55);
+    }
+  } catch {
+    // Pas de son disponible : l'alerte visuelle suffit.
+  }
+}
+
+async function toggleAlerts() {
+  state.alerts = !state.alerts;
+  try {
+    localStorage.setItem(ALERTS_KEY, state.alerts ? 'oui' : 'non');
+  } catch {
+    // Préférence non mémorisée (navigation privée).
+  }
+  refs.bell.setAttribute('aria-pressed', String(state.alerts));
+  if (!state.alerts) {
+    toast('Alertes désactivées.');
+    return;
+  }
+  chime();
+  let system = false;
+  if ('Notification' in window) {
+    if (Notification.permission === 'default') await Notification.requestPermission().catch(() => {});
+    system = Notification.permission === 'granted';
+  }
+  toast(system
+    ? 'Un son et une notification à chaque nouveau rendez-vous.'
+    : 'Un son à chaque nouveau rendez-vous, tant que cette page reste ouverte.', { title: 'Alertes activées' });
+}
+
+function announce(booking) {
+  toast(`${booking.name} · ${booking.serviceName}`, {
+    title: 'Nouveau rendez-vous',
+    detail: whenLabel(booking),
+    action: { label: 'Voir le rendez-vous', run: () => openDetail(booking.id) },
+    duration: 9000,
+  });
+  if (!state.alerts) return;
+  chime();
+  if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+    try {
+      new Notification('Nouveau rendez-vous', { body: `${booking.name} · ${booking.serviceName}\n${whenLabel(booking)}`, tag: booking.id });
+    } catch {
+      // Certains navigateurs mobiles refusent ce constructeur : le son et le message restent.
+    }
+  }
+}
+
+// ── Connexion ─────────────────────────────────────────────────────────────
+
+function showAuth(mode, notice = '') {
+  disconnect();
+  closeSheets();
+  document.title = BASE_TITLE;
+  const setup = mode === 'setup';
+  const error = h('p', { class: 'notice notice--error', role: 'alert', hidden: true });
+  const submit = h('button', { type: 'submit', class: 'btn btn--accent' },
+    h('span', {}, setup ? "Créer l'accès" : 'Se connecter'), icon('arrow-right'));
+
+  const fail = message => {
+    error.textContent = message;
+    error.hidden = false;
+  };
+
+  const form = h('form', { class: 'auth-form', novalidate: true },
+    // Aide les gestionnaires de mots de passe à ranger l'identifiant au bon endroit.
+    h('input', { class: 'sr-only', type: 'text', name: 'username', autocomplete: 'username', value: 'salon', tabindex: '-1', 'aria-hidden': 'true', readonly: true }),
+    setup && field({
+      id: 'acces-code',
+      label: 'Code de configuration',
+      hint: 'Il est affiché dans la fenêtre du serveur, au démarrage.',
+      control: h('input', { name: 'code', type: 'text', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', maxlength: '12', required: true }),
+    }),
+    field({
+      id: 'acces-mot-de-passe',
+      label: setup ? 'Choisissez un mot de passe' : 'Mot de passe',
+      hint: setup ? '10 caractères au minimum. Une phrase facile à retenir convient très bien.' : '',
+      control: h('input', { name: 'password', type: 'password', autocomplete: setup ? 'new-password' : 'current-password', required: true }),
+    }),
+    setup && field({
+      id: 'acces-confirmation',
+      label: 'Confirmez le mot de passe',
+      control: h('input', { name: 'confirm', type: 'password', autocomplete: 'new-password', required: true }),
+    }),
+    error,
+    submit);
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    error.hidden = true;
+    const values = Object.fromEntries(new FormData(form));
+    if (setup && values.password.length < 10) return fail('Le mot de passe doit contenir au moins 10 caractères.');
+    if (setup && values.password !== values.confirm) return fail('Les deux mots de passe ne sont pas identiques.');
+    if (!values.password) return fail('Saisissez votre mot de passe.');
+    submit.disabled = true;
+    try {
+      await api(setup ? '/api/salon/setup' : '/api/salon/login', {
+        method: 'POST',
+        body: setup ? { code: values.code, password: values.password } : { password: values.password },
+      });
+      await enter();
+    } catch (err) {
+      fail(err.message);
+      submit.disabled = false;
+    }
+    return undefined;
+  });
+
+  root.replaceChildren(h('div', { class: 'auth' },
+    h('div', { class: 'auth-card' },
+      brand(),
+      h('p', { class: 'eyebrow' }, 'Espace salon'),
+      h('h1', { class: 'auth-title' }, setup ? 'Première connexion' : `Bonjour${config.owner ? ` ${config.owner}` : ''}`),
+      h('p', { class: 'auth-lead' }, setup
+        ? "Créez le mot de passe qui protégera l'agenda et les coordonnées de vos clients."
+        : 'Connectez-vous pour voir vos rendez-vous.'),
+      notice && h('p', { class: 'notice' }, notice),
+      form,
+      h('a', { class: 'link', href: '/' }, 'Retour au site'))));
+  form.querySelector('input:not([readonly])').focus();
+}
+
+function signedOut(message) {
+  if (!state.today) return; // déjà sur l'écran de connexion
+  state.today = '';
+  showAuth('login', message);
+}
+
+async function logout() {
+  try {
+    await api('/api/salon/logout', { method: 'POST' });
+  } catch {
+    // Même si le serveur ne répond pas, on quitte l'écran.
+  }
+  state.today = '';
+  showAuth('login');
+}
+
+// ── Données et temps réel ─────────────────────────────────────────────────
+
+async function loadData() {
+  const data = await call('/api/salon/data');
+  const followToday = !state.day || state.day === state.today;
+  state.today = data.today;
+  state.nowMinutes = data.nowMinutes;
+  state.bookings = data.bookings;
+  state.closures = data.closures;
+  if (followToday) state.day = data.today;
+}
+
+function upsert(booking) {
+  const index = state.bookings.findIndex(b => b.id === booking.id);
+  if (index === -1) state.bookings.push(booking);
+  else state.bookings[index] = booking;
+  refresh();
+}
+
+function drop(id) {
+  state.bookings = state.bookings.filter(b => b.id !== id);
+  refresh();
+}
+
+function markFresh(id) {
+  state.fresh.add(id);
+  setTimeout(() => state.fresh.delete(id), 3000);
+}
+
+function setLive(live) {
+  refs.live?.classList.toggle('is-off', !live);
+  if (refs.live) refs.live.lastElementChild.textContent = live ? 'En direct' : 'Reconnexion…';
+}
+
+function disconnect() {
+  source?.close();
+  source = null;
+  clearInterval(clock);
+}
+
+function connect() {
+  disconnect();
+  let dropped = false;
+  source = new EventSource('/api/salon/events');
+
+  source.addEventListener('open', () => {
+    setLive(true);
+    if (dropped) loadData().then(refresh).catch(() => {});
+    dropped = false;
+  });
+
+  source.addEventListener('error', async () => {
+    dropped = true;
+    setLive(false);
+    try {
+      const session = await api('/api/salon/session');
+      if (!session.authenticated) signedOut('Votre session a expiré. Reconnectez-vous.');
+    } catch {
+      // Serveur injoignable : EventSource réessaie tout seul.
+    }
+  });
+
+  source.addEventListener('booking', event => {
+    const { kind, booking } = JSON.parse(event.data);
+    if (kind === 'deleted') {
+      drop(booking.id);
+      return;
+    }
+    const isNew = kind === 'created' && !state.bookings.some(b => b.id === booking.id);
+    if (isNew) markFresh(booking.id);
+    upsert(booking);
+    if (isNew && booking.source === 'online') announce(booking);
+  });
+
+  source.addEventListener('closures', event => {
+    state.closures = JSON.parse(event.data).closures;
+    refresh();
+  });
+
+  // L'heure avance : la ligne « maintenant » suit, et les données sont resynchronisées de temps en temps.
+  let minutes = 0;
+  clock = setInterval(() => {
+    minutes += 1;
+    state.nowMinutes += 1;
+    if (state.nowMinutes >= 1440 || minutes % 10 === 0) loadData().then(refresh).catch(() => {});
+    else placeNowLine();
+  }, 60_000);
+}
+
+async function enter() {
+  await loadData();
+  mountDashboard();
+  connect();
+}
+
+// ── Tableau de bord ───────────────────────────────────────────────────────
+
+const TABS = [
+  { key: 'day', label: 'Journée', icon: 'calendar' },
+  { key: 'list', label: 'Tous les rendez-vous', icon: 'list' },
+  { key: 'closures', label: 'Fermetures', icon: 'ban' },
+];
+
+function mountDashboard() {
+  refs.live = h('span', { class: 'salon-live' }, h('span', { class: 'dot', 'aria-hidden': 'true' }), h('span', {}, 'En direct'));
+  refs.bell = h('button', {
+    type: 'button', class: 'icon-btn', 'aria-pressed': String(state.alerts),
+    'aria-label': 'Alertes à chaque nouveau rendez-vous', title: 'Alertes à chaque nouveau rendez-vous', onclick: toggleAlerts,
+  }, icon('bell'));
+  refs.stats = h('section', { class: 'stats', 'aria-label': "En un coup d'œil" });
+  refs.pending = h('span', { class: 'count', hidden: true });
+  refs.tabs = h('nav', { class: 'views', 'aria-label': 'Vues' }, TABS.map(tab => h('button', {
+    type: 'button', class: 'view-tab', dataset: { tab: tab.key }, 'aria-pressed': 'false', onclick: () => setTab(tab.key),
+  }, icon(tab.icon), tab.label, tab.key === 'list' ? refs.pending : null)));
+  refs.view = h('section', { class: 'view' });
+
+  root.replaceChildren(
+    h('header', { class: 'salon-bar' },
+      brand(),
+      refs.live,
+      h('div', { class: 'salon-bar-actions' },
+        h('button', { type: 'button', class: 'btn btn--small btn--accent', onclick: () => openNewBooking() }, icon('plus'), h('span', {}, 'Rendez-vous')),
+        refs.bell,
+        h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Changer le mot de passe', title: 'Changer le mot de passe', onclick: openPassword }, icon('lock')),
+        h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Se déconnecter', title: 'Se déconnecter', onclick: logout }, icon('logout')))),
+    h('div', { class: 'salon-body' },
+      h('h1', { class: 'sr-only' }, 'Espace salon'),
+      refs.stats,
+      refs.tabs,
+      refs.view));
+
+  setTab(state.tab);
+  renderStats();
+}
+
+function renderStats() {
+  const active = state.bookings.filter(isActive);
+  const today = active.filter(b => b.date === state.today);
+  const weekEnd = addDays(state.today, 6);
+  const pending = active.filter(b => b.status === 'pending' && b.date >= state.today).length;
+  const cards = [
+    { value: today.length, label: "Aujourd'hui" },
+    { value: pending, label: 'À confirmer', alert: pending > 0 },
+    { value: active.filter(b => b.date >= state.today && b.date <= weekEnd).length, label: 'Sur 7 jours' },
+    { value: euros(today.reduce((sum, b) => sum + b.price, 0)), label: "À encaisser aujourd'hui" },
+  ];
+  refs.stats.replaceChildren(...cards.map(card => h('div', { class: `stat${card.alert ? ' stat--alert' : ''}` },
+    h('strong', {}, String(card.value)), h('span', {}, card.label))));
+
+  refs.pending.hidden = pending === 0;
+  refs.pending.textContent = String(pending);
+  refs.pending.setAttribute('aria-label', `${pending} à confirmer`);
+  document.title = `${pending ? `(${pending}) ` : ''}${BASE_TITLE}`;
+}
+
+const VIEWS = {
+  day: { mount: mountDay, render: renderDay },
+  list: { mount: mountList, render: renderList },
+  closures: { mount: mountClosures, render: renderClosures },
+};
+
+function setTab(tab) {
+  state.tab = tab;
+  for (const button of refs.tabs.querySelectorAll('.view-tab')) button.setAttribute('aria-pressed', String(button.dataset.tab === tab));
+  VIEWS[tab].mount();
+  animate(refs.view, [{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 420 });
+}
+
+/** Après tout changement de données : chiffres, vue courante et fiche ouverte. */
+function refresh() {
+  if (!state.today || !refs.view) return;
+  renderStats();
+  VIEWS[state.tab].render();
+  refreshDetail();
+}
+
+// ── Vue « Journée » ───────────────────────────────────────────────────────
+
+function mountDay() {
+  refs.dayTitle = h('h2', { class: 'day-title', 'aria-live': 'polite' });
+  refs.todayButton = h('button', { type: 'button', class: 'btn btn--small btn--outline', onclick: () => setDay(state.today) }, h('span', {}, "Aujourd'hui"));
+  refs.dayPicker = h('input', {
+    type: 'date', class: 'day-picker', 'aria-label': 'Aller à une date',
+    onchange: event => { if (event.target.value) setDay(event.target.value); },
+  });
+  refs.dayBody = h('div', {});
+  refs.view.replaceChildren(
+    h('div', { class: 'day-nav' },
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Jour précédent', onclick: () => setDay(addDays(state.day, -1)) }, icon('chevron-left')),
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Jour suivant', onclick: () => setDay(addDays(state.day, 1)) }, icon('chevron-right')),
+      refs.dayTitle,
+      refs.todayButton,
+      refs.dayPicker),
+    refs.dayBody);
+  renderDay();
+}
+
+function setDay(date) {
+  state.day = date;
+  renderDay();
+  animate(refs.dayBody, [{ opacity: 0 }, { opacity: 1 }], { duration: 300 });
+}
+
+function renderDay() {
+  const date = state.day;
+  refs.dayTitle.textContent = capitalize(formatLong(date));
+  refs.todayButton.disabled = date === state.today;
+  refs.dayPicker.value = date;
+
+  const closure = state.closures.find(c => c.date === date);
+  const ranges = closure ? [] : config.hours[weekday(date)];
+  const all = bookingsOn(date);
+  const active = all.filter(isActive);
+  const cancelled = all.filter(b => !isActive(b));
+  const parts = [];
+
+  if (closure) parts.push(h('p', { class: 'banner' }, icon('ban'), `Salon fermé ce jour-là${closure.reason ? ` : ${closure.reason}` : ''}.`));
+  else if (!ranges.length) parts.push(h('p', { class: 'banner' }, icon('ban'), 'Jour de fermeture habituel.'));
+
+  if (ranges.length || active.length) parts.push(timeline(date, ranges, active));
+  else parts.push(h('p', { class: 'empty' }, 'Aucun rendez-vous ce jour-là.'));
+
+  if (cancelled.length) {
+    parts.push(h('details', { class: 'cancelled-box' },
+      h('summary', {}, plural(cancelled.length, 'rendez-vous annulé', 'rendez-vous annulés')),
+      cancelled.map(bookingRow)));
+  }
+  refs.dayBody.replaceChildren(...parts);
+  placeNowLine();
+}
+
+function timeline(date, ranges, bookings) {
+  const step = config.slotStep;
+  let from = ranges.length ? ranges[0].start : 9 * 60;
+  let to = ranges.length ? ranges.at(-1).end : 18 * 60;
+  for (const booking of bookings) {
+    from = Math.min(from, Math.floor(booking.start / step) * step);
+    to = Math.max(to, Math.ceil((booking.start + booking.duration) / step) * step);
+  }
+
+  const rows = [];
+  for (let minute = from; minute < to; minute += step) {
+    const open = ranges.some(range => minute >= range.start && minute < range.end);
+    rows.push(h('div', { class: `timeline-row${open ? '' : ' is-closed'}${minute % 60 === 0 ? ' is-hour' : ''}` },
+      h('span', { class: 'timeline-time' }, minute % 60 === 0 ? frTime(minute) : ''),
+      open && date >= state.today
+        ? h('button', {
+          type: 'button', class: 'timeline-add', 'aria-label': `Ajouter un rendez-vous à ${frTime(minute)}`,
+          onclick: () => openNewBooking({ date, time: fromMinutes(minute) }),
+        }, icon('plus'))
+        : null));
+  }
+
+  const layer = h('div', { class: 'timeline-layer' }, bookings.map(booking => {
+    const block = h('button', {
+      type: 'button',
+      class: `block block--${booking.status}${state.fresh.has(booking.id) ? ' is-fresh' : ''}`,
+      'aria-label': `${booking.name}, ${booking.serviceName}, ${hoursLabel(booking)}, ${STATUS[booking.status]}`,
+      onclick: () => openDetail(booking.id),
+    },
+    h('span', { class: 'block-name' }, booking.name),
+    h('span', { class: 'block-meta' }, `${hoursLabel(booking)} · ${booking.serviceName}`),
+    booking.status === 'pending' ? statusBadge(booking) : null);
+    block.style.top = `calc(${(booking.start - from) / step} * var(--row-h))`;
+    block.style.height = `calc(${booking.duration / step} * var(--row-h) - 4px)`;
+    return block;
+  }));
+
+  refs.nowLine = null;
+  if (date === state.today) {
+    refs.nowLine = h('div', { class: 'timeline-now', 'aria-hidden': 'true', hidden: true }, h('span', {}));
+    refs.nowLine.dataset.from = String(from);
+    refs.nowLine.dataset.to = String(to);
+    layer.append(refs.nowLine);
+  }
+  return h('div', { class: 'timeline' }, rows, layer);
+}
+
+/** Place (ou cache) le trait rouge de l'heure courante sur l'agenda d'aujourd'hui. */
+function placeNowLine() {
+  const line = refs.nowLine;
+  if (!line || !line.isConnected) return;
+  const from = Number(line.dataset.from);
+  const to = Number(line.dataset.to);
+  line.hidden = state.nowMinutes < from || state.nowMinutes > to;
+  line.style.top = `calc(${(state.nowMinutes - from) / config.slotStep} * var(--row-h))`;
+  line.firstElementChild.textContent = frTime(state.nowMinutes);
+}
+
+// ── Vue « Tous les rendez-vous » ──────────────────────────────────────────
+
+const FILTERS = [
+  { key: 'upcoming', label: 'À venir', test: b => isActive(b) && b.date >= state.today },
+  { key: 'pending', label: 'À confirmer', test: b => b.status === 'pending' && b.date >= state.today },
+  { key: 'past', label: 'Passés', test: b => isActive(b) && b.date < state.today, newestFirst: true },
+  { key: 'cancelled', label: 'Annulés', test: b => !isActive(b), newestFirst: true },
+];
+
+function mountList() {
+  refs.chips = h('div', { class: 'chips', role: 'group', 'aria-label': 'Filtrer les rendez-vous' }, FILTERS.map(filter => h('button', {
+    type: 'button', class: 'chip', dataset: { filter: filter.key }, 'aria-pressed': String(state.filter === filter.key),
+    onclick: () => {
+      state.filter = filter.key;
+      for (const chip of refs.chips.children) chip.setAttribute('aria-pressed', String(chip.dataset.filter === filter.key));
+      renderList();
+    },
+  }, filter.label)));
+  const search = h('input', { type: 'search', placeholder: 'Nom ou téléphone', value: state.search, autocomplete: 'off' });
+  search.addEventListener('input', debounce(() => {
+    state.search = search.value;
+    renderList();
+  }, 150));
+  refs.listBody = h('div', {});
+  refs.view.replaceChildren(
+    h('div', { class: 'list-tools' },
+      refs.chips,
+      h('label', { class: 'search' }, icon('search'), h('span', { class: 'sr-only' }, 'Rechercher un client'), search)),
+    refs.listBody);
+  renderList();
+}
+
+function renderList() {
+  const filter = FILTERS.find(f => f.key === state.filter);
+  const query = state.search.trim().toLowerCase();
+  const digits = query.replace(/\D/g, '');
+  const matches = booking => !query
+    || booking.name.toLowerCase().includes(query)
+    || (digits.length >= 2 && booking.phone.replace(/\D/g, '').includes(digits));
+
+  const found = state.bookings.filter(b => filter.test(b) && matches(b)).sort(byTime);
+  if (filter.newestFirst) found.reverse();
+  if (!found.length) {
+    refs.listBody.replaceChildren(h('p', { class: 'empty' }, query ? 'Aucun rendez-vous ne correspond à cette recherche.' : 'Aucun rendez-vous ici pour le moment.'));
+    return;
+  }
+
+  const nodes = [];
+  let current = '';
+  for (const booking of found) {
+    if (booking.date !== current) {
+      current = booking.date;
+      const tag = current === state.today ? "Aujourd'hui" : current === addDays(state.today, 1) ? 'Demain' : '';
+      nodes.push(h('h2', { class: 'group-title' }, capitalize(formatLong(current)), tag ? h('small', {}, tag) : null));
+    }
+    nodes.push(bookingRow(booking));
+  }
+  refs.listBody.replaceChildren(...nodes);
+}
+
+function bookingRow(booking) {
+  return h('article', { class: `row row--${booking.status}${state.fresh.has(booking.id) ? ' is-fresh' : ''}` },
+    h('div', { class: 'row-time' }, h('strong', {}, frTime(booking.start)), h('span', {}, `jusqu'à ${frTime(booking.start + booking.duration)}`)),
+    h('div', { class: 'row-main' },
+      h('p', { class: 'row-name' }, h('span', {}, booking.name), statusBadge(booking)),
+      h('p', { class: 'row-meta' }, `${booking.serviceName} · ${priceText(booking)}`,
+        booking.phone ? [' · ', h('a', { class: 'link', href: telHref(booking.phone) }, booking.phone)] : null),
+      booking.note ? h('p', { class: 'row-note' }, `« ${booking.note} »`) : null),
+    h('div', { class: 'row-actions' },
+      booking.status === 'pending'
+        ? h('button', { type: 'button', class: 'btn btn--small', 'aria-label': `Confirmer le rendez-vous de ${booking.name}`, onclick: () => quickConfirm(booking.id) }, h('span', {}, 'Confirmer'), icon('check'))
+        : null,
+      h('button', { type: 'button', class: 'btn btn--small btn--outline', 'aria-label': `Détails du rendez-vous de ${booking.name}`, onclick: () => openDetail(booking.id) }, h('span', {}, 'Détails'))));
+}
+
+async function quickConfirm(id) {
+  try {
+    const { booking } = await call(`/api/salon/bookings/${id}`, { method: 'PATCH', body: { status: 'confirmed' } });
+    upsert(booking);
+  } catch (err) {
+    toast(err.message, { type: 'error' });
+  }
+}
+
+// ── Vue « Fermetures » ────────────────────────────────────────────────────
+
+function mountClosures() {
+  const error = h('p', { class: 'notice notice--error', role: 'alert', hidden: true });
+  const date = h('input', { name: 'date', type: 'date', min: state.today, required: true });
+  const until = h('input', { name: 'until', type: 'date', min: state.today });
+  const reason = h('input', { name: 'reason', type: 'text', maxlength: '80', placeholder: 'Congés, formation…' });
+  const form = h('form', { class: 'closure-form', novalidate: true },
+    field({ id: 'fermeture-date', label: 'Fermé du', control: date }),
+    field({ id: 'fermeture-fin', label: "Jusqu'au", optional: true, control: until }),
+    field({ id: 'fermeture-motif', label: 'Motif', optional: true, control: reason }),
+    h('button', { type: 'submit', class: 'btn' }, h('span', {}, 'Fermer'), icon('ban')),
+    error);
+
+  // La date de fin ne peut pas précéder la date de début.
+  date.addEventListener('change', () => {
+    until.min = date.value || state.today;
+    if (until.value && until.value < date.value) until.value = '';
+  });
+
+  const fail = (message, input) => {
+    error.textContent = message;
+    error.hidden = false;
+    input?.focus();
+  };
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    error.hidden = true;
+    if (!date.value) return fail('Choisissez le premier jour de fermeture.', date);
+    if (until.value && until.value < date.value) return fail('La date de fin doit suivre la date de début.', until);
+    const period = { from: date.value, to: until.value || date.value };
+    try {
+      const { closures } = await call('/api/salon/closures', { method: 'POST', body: { date: period.from, until: period.to, reason: reason.value } });
+      state.closures = closures;
+      form.reset();
+      until.min = state.today;
+      refresh();
+      toast(`Le salon sera fermé ${periodLabel(period)}. C'est annoncé sur le site.`);
+    } catch (err) {
+      fail(err.message);
+    }
+  });
+
+  refs.closureList = h('div', {});
+  refs.view.replaceChildren(
+    h('p', { class: 'view-lead' }, "Pour des congés, indiquez le premier et le dernier jour : la fermeture est annoncée dans le bandeau du site et ces jours ne sont plus proposés à la réservation. Les rendez-vous déjà pris restent enregistrés : pensez à prévenir les clients concernés."),
+    form,
+    refs.closureList);
+  renderClosures();
+}
+
+/** « le mardi 20 octobre » ou « du mardi 20 octobre au samedi 31 octobre » */
+const periodLabel = period => (period.from === period.to
+  ? `le ${formatLong(period.from)}`
+  : `du ${formatLong(period.from)} au ${formatLong(period.to)}`);
+
+/**
+ * Regroupe les jours fermés en périodes, comme sur le site : même motif, et rien d'autre entre
+ * deux jours que des jours de fermeture habituelle.
+ */
+function closurePeriods(list) {
+  const usuallyClosed = day => !(config.hours[weekday(day)] || []).length;
+  const periods = [];
+  for (const closure of list) {
+    const reason = (closure.reason || '').trim();
+    const last = periods.at(-1);
+    let joins = Boolean(last) && last.reason.toLowerCase() === reason.toLowerCase();
+    for (let day = joins ? addDays(last.to, 1) : closure.date; joins && day < closure.date; day = addDays(day, 1)) {
+      if (!usuallyClosed(day)) joins = false;
+    }
+    if (joins) {
+      last.to = closure.date;
+      last.dates.push(closure.date);
+    } else {
+      periods.push({ from: closure.date, to: closure.date, reason, dates: [closure.date] });
+    }
+  }
+  return periods;
+}
+
+function renderClosures() {
+  const periods = closurePeriods(state.closures.filter(c => c.date >= state.today));
+  if (!periods.length) {
+    refs.closureList.replaceChildren(h('p', { class: 'empty' }, 'Aucune fermeture prévue.'));
+    return;
+  }
+  refs.closureList.replaceChildren(...periods.map(period => {
+    const single = period.from === period.to;
+    const affected = period.dates.reduce((total, day) => total + bookingsOn(day).filter(isActive).length, 0);
+    return h('article', { class: 'row row--closure' },
+      h('div', { class: 'row-time' },
+        h('strong', {}, capitalize(formatShort(period.from))),
+        single ? null : h('span', {}, `au ${formatShort(period.to)}`)),
+      h('div', { class: 'row-main' },
+        h('p', { class: 'row-name' }, h('span', {}, period.reason || 'Salon fermé'),
+          single ? null : h('span', { class: 'badge badge--neutral' }, plural(period.dates.length, 'jour', 'jours')),
+          affected ? h('span', { class: 'badge badge--pending' }, `${plural(affected, 'rendez-vous', 'rendez-vous')} à déplacer`) : null)),
+      h('div', { class: 'row-actions' },
+        h('button', {
+          type: 'button', class: 'btn btn--small btn--outline', 'aria-label': `Rouvrir ${periodLabel(period)}`,
+          onclick: async () => {
+            try {
+              const { closures } = await call(`/api/salon/closures/${period.from}?until=${period.to}`, { method: 'DELETE' });
+              state.closures = closures;
+              refresh();
+              toast(`Le salon est de nouveau ouvert ${periodLabel(period)}.`);
+            } catch (err) {
+              toast(err.message, { type: 'error' });
+            }
+          },
+        }, h('span', {}, 'Rouvrir'))));
+  }));
+}
+
+// ── Fenêtres ──────────────────────────────────────────────────────────────
+
+function closeSheets() {
+  for (const sheet of document.querySelectorAll('dialog.sheet')) sheet.close();
+}
+
+function openSheet({ eyebrow, title, onClose }) {
+  closeSheets();
+  const heading = h('h2', { id: 'fenetre-titre' }, title);
+  const body = h('div', { class: 'sheet-body' });
+  const dialog = h('dialog', { class: 'sheet', 'aria-labelledby': 'fenetre-titre' },
+    h('div', { class: 'sheet-head' },
+      h('div', {}, eyebrow ? h('p', { class: 'eyebrow' }, eyebrow) : null, heading),
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Fermer', onclick: () => dialog.close() }, icon('close'))),
+    body);
+  // Un clic sur le fond (la boîte elle-même, hors de son contenu) ferme la fenêtre.
+  dialog.addEventListener('click', event => {
+    if (event.target === dialog) dialog.close();
+  });
+  dialog.addEventListener('close', () => {
+    dialog.remove();
+    onClose?.();
+  });
+  document.body.append(dialog);
+  dialog.showModal();
+  return { dialog, body, heading };
+}
+
+// — Fiche d'un rendez-vous —
+
+function openDetail(id) {
+  const booking = state.bookings.find(b => b.id === id);
+  if (!booking) return;
+  const sheet = openSheet({ eyebrow: 'Rendez-vous', title: booking.name });
+  const entry = { id, sheet, asking: null, error: '' };
+  // La fermeture est signalée après coup : on n'efface la fiche courante que si c'est bien celle-ci.
+  sheet.dialog.addEventListener('close', () => {
+    if (detail === entry) detail = null;
+  });
+  detail = entry;
+  renderDetail();
+}
+
+function refreshDetail() {
+  if (!detail) return;
+  if (state.bookings.some(b => b.id === detail.id)) renderDetail();
+  else detail.sheet.dialog.close();
+}
+
+async function detailAction(run) {
+  const current = detail;
+  current.error = '';
+  current.asking = null;
+  try {
+    await run();
+  } catch (err) {
+    current.error = err.message;
+  }
+  if (detail === current) renderDetail({ focus: true });
+}
+
+function renderDetail({ focus = false } = {}) {
+  const booking = state.bookings.find(b => b.id === detail.id);
+  if (!booking) return; // supprimé entre-temps : la fenêtre est en train de se fermer
+  const row = (label, value) => h('div', {}, h('dt', {}, label), h('dd', {}, value));
+  const received = new Date(booking.createdAt);
+  const setStatus = status => detailAction(async () => {
+    const result = await call(`/api/salon/bookings/${booking.id}`, { method: 'PATCH', body: { status } });
+    upsert(result.booking);
+  });
+  const ask = question => {
+    detail.asking = question;
+    renderDetail({ focus: true });
+  };
+  const button = (label, variant, onclick, iconName) => h('button', { type: 'button', class: `btn btn--small ${variant}`, onclick },
+    h('span', {}, label), iconName ? icon(iconName) : null);
+
+  let actions;
+  if (detail.asking === 'cancel') {
+    actions = [
+      h('p', { class: 'sheet-question' }, 'Annuler ce rendez-vous ? Le créneau sera de nouveau proposé en ligne.'),
+      button('Oui, annuler', 'btn--danger', () => setStatus('cancelled')),
+      button('Non, le garder', 'btn--outline', () => ask(null)),
+    ];
+  } else if (detail.asking === 'delete') {
+    actions = [
+      h('p', { class: 'sheet-question' }, 'Supprimer définitivement ce rendez-vous ?'),
+      button('Oui, supprimer', 'btn--danger', () => detailAction(async () => {
+        await call(`/api/salon/bookings/${booking.id}`, { method: 'DELETE' });
+        drop(booking.id);
+      })),
+      button('Non', 'btn--outline', () => ask(null)),
+    ];
+  } else if (booking.status === 'cancelled') {
+    actions = [
+      button('Rétablir', '', () => setStatus('confirmed'), 'check'),
+      button('Supprimer', 'btn--danger', () => ask('delete'), 'trash'),
+    ];
+  } else {
+    actions = [
+      booking.status === 'pending' ? button('Confirmer', '', () => setStatus('confirmed'), 'check') : null,
+      button('Annuler le rendez-vous', 'btn--danger', () => ask('cancel')),
+    ];
+  }
+
+  const actionBar = h('div', { class: 'sheet-actions' }, actions);
+  detail.sheet.heading.textContent = booking.name;
+  detail.sheet.body.replaceChildren(...[
+    h('p', { class: 'sheet-actions' }, statusBadge(booking),
+      h('span', { class: 'badge badge--neutral' }, booking.source === 'salon' ? 'Saisi au salon' : 'Réservé en ligne')),
+    h('dl', { class: 'detail-list' },
+      row('Prestation', booking.serviceName),
+      row('Date', capitalize(formatLong(booking.date))),
+      row('Heure', hoursLabel(booking)),
+      row('Durée', durationLabel(booking.duration)),
+      row('À régler sur place', priceText(booking)),
+      booking.phone ? row('Téléphone', h('a', { class: 'link', href: telHref(booking.phone) }, booking.phone)) : null,
+      booking.note ? row('Message', booking.note) : null,
+      row('Reçu le', `${received.toLocaleDateString('fr-FR')} à ${received.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`)),
+    detail.error ? h('p', { class: 'notice notice--error', role: 'alert' }, detail.error) : null,
+    actionBar,
+  ].filter(Boolean));
+  if (focus) actionBar.querySelector('button')?.focus();
+}
+
+// — Nouveau rendez-vous, saisi par la coiffeuse —
+
+function openNewBooking({ date = '', time = '' } = {}) {
+  const sheet = openSheet({ eyebrow: 'Saisie au salon', title: 'Nouveau rendez-vous' });
+  const error = h('p', { class: 'notice notice--error', role: 'alert', hidden: true });
+  const categories = [...new Set(config.services.map(service => service.category))];
+  const service = h('select', { name: 'serviceId', required: true }, categories.map(category => h('optgroup', { label: category },
+    config.services.filter(s => s.category === category).map(s => h('option', { value: s.id }, `${s.name} · ${durationLabel(s.duration)} · ${priceText(s)}`)))));
+  const day = h('input', { name: 'date', type: 'date', min: state.today, required: true });
+  day.value = date || (state.day >= state.today ? state.day : state.today);
+  const slot = h('select', { name: 'time', required: true });
+  const name = h('input', { name: 'name', type: 'text', maxlength: '60', autocomplete: 'off', required: true });
+  const phone = h('input', { name: 'phone', type: 'tel', inputmode: 'tel', maxlength: '30', autocomplete: 'off' });
+  const note = h('input', { name: 'note', type: 'text', maxlength: '200', autocomplete: 'off' });
+  const submit = h('button', { type: 'submit', class: 'btn', disabled: true }, h('span', {}, 'Enregistrer'), icon('check'));
+
+  const fail = message => {
+    error.textContent = message;
+    error.hidden = false;
+  };
+
+  let request = 0;
+  let wanted = time;
+  async function loadTimes() {
+    const current = ++request;
+    submit.disabled = true;
+    if (!day.value) {
+      slot.replaceChildren(h('option', { value: '' }, 'Choisissez une date'));
+      return;
+    }
+    slot.replaceChildren(h('option', { value: '' }, 'Chargement…'));
+    try {
+      const result = await call(`/api/availability?service=${service.value}&date=${day.value}&salon=1`);
+      if (current !== request) return;
+      const free = result.slots.filter(s => s.available);
+      if (!free.length) {
+        slot.replaceChildren(h('option', { value: '' }, result.closed ? 'Salon fermé ce jour-là' : 'Aucun créneau libre'));
+        return;
+      }
+      slot.replaceChildren(...free.map(s => h('option', { value: s.time, selected: s.time === wanted }, frTime(s.time))));
+      submit.disabled = false;
+    } catch (err) {
+      if (current === request) fail(err.message);
+    }
+  }
+  slot.addEventListener('change', () => { wanted = slot.value; });
+  service.addEventListener('change', loadTimes);
+  day.addEventListener('change', loadTimes);
+
+  const form = h('form', { class: 'sheet-form', novalidate: true },
+    field({ id: 'nouveau-prestation', label: 'Prestation', control: service }),
+    h('div', { class: 'field-row' },
+      field({ id: 'nouveau-date', label: 'Date', control: day }),
+      field({ id: 'nouveau-heure', label: 'Heure', control: slot })),
+    field({ id: 'nouveau-nom', label: 'Nom du client', control: name }),
+    field({ id: 'nouveau-telephone', label: 'Téléphone', optional: true, control: phone }),
+    field({ id: 'nouveau-note', label: 'Note', optional: true, control: note }),
+    error,
+    h('div', { class: 'sheet-actions' }, submit));
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    error.hidden = true;
+    if (!name.value.trim()) {
+      fail('Indiquez le nom du client.');
+      name.focus();
+      return;
+    }
+    submit.disabled = true;
+    try {
+      const { booking } = await call('/api/salon/bookings', {
+        method: 'POST',
+        body: { serviceId: service.value, date: day.value, time: slot.value, name: name.value, phone: phone.value, note: note.value },
+      });
+      markFresh(booking.id);
+      state.day = booking.date;
+      sheet.dialog.close();
+      upsert(booking);
+      toast(`${booking.name} · ${whenLabel(booking)}`, { title: 'Rendez-vous enregistré' });
+    } catch (err) {
+      fail(err.data?.fields ? Object.values(err.data.fields).join(' ') : err.message);
+      if (err.status === 409) await loadTimes();
+      else submit.disabled = false;
+    }
+  });
+
+  sheet.body.replaceChildren(form);
+  loadTimes();
+  name.focus();
+}
+
+// — Mot de passe —
+
+function openPassword() {
+  const sheet = openSheet({ eyebrow: 'Sécurité', title: 'Changer le mot de passe' });
+  const error = h('p', { class: 'notice notice--error', role: 'alert', hidden: true });
+  const current = h('input', { name: 'current', type: 'password', autocomplete: 'current-password', required: true });
+  const next = h('input', { name: 'next', type: 'password', autocomplete: 'new-password', required: true });
+  const confirm = h('input', { name: 'confirm', type: 'password', autocomplete: 'new-password', required: true });
+  const submit = h('button', { type: 'submit', class: 'btn' }, h('span', {}, 'Changer le mot de passe'), icon('lock'));
+
+  const fail = message => {
+    error.textContent = message;
+    error.hidden = false;
+  };
+
+  const form = h('form', { class: 'sheet-form', novalidate: true },
+    h('input', { class: 'sr-only', type: 'text', name: 'username', autocomplete: 'username', value: 'salon', tabindex: '-1', 'aria-hidden': 'true', readonly: true }),
+    field({ id: 'mdp-actuel', label: 'Mot de passe actuel', control: current }),
+    field({ id: 'mdp-nouveau', label: 'Nouveau mot de passe', hint: '10 caractères au minimum.', control: next }),
+    field({ id: 'mdp-confirmation', label: 'Confirmez le nouveau mot de passe', control: confirm }),
+    error,
+    h('div', { class: 'sheet-actions' }, submit));
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    error.hidden = true;
+    if (next.value.length < 10) return fail('Le nouveau mot de passe doit contenir au moins 10 caractères.');
+    if (next.value !== confirm.value) return fail('Les deux mots de passe ne sont pas identiques.');
+    submit.disabled = true;
+    try {
+      await call('/api/salon/password', { method: 'POST', body: { current: current.value, next: next.value } });
+      sheet.dialog.close();
+      toast('Les autres appareils connectés ont été déconnectés.', { title: 'Mot de passe modifié' });
+    } catch (err) {
+      fail(err.message);
+      submit.disabled = false;
+    }
+    return undefined;
+  });
+
+  sheet.body.replaceChildren(form);
+  current.focus();
+}
+
+// ── Démarrage ─────────────────────────────────────────────────────────────
+
+async function start() {
+  try {
+    const session = await api('/api/salon/session');
+    if (!session.configured) showAuth('setup');
+    else if (!session.authenticated) showAuth('login');
+    else await enter();
+  } catch (err) {
+    root.replaceChildren(h('p', { class: 'notice notice--error', role: 'alert' }, err.message));
+  }
+}
+
+start();

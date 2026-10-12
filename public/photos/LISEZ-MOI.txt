@@ -1,0 +1,10 @@
+Déposez ici les photos du salon (JPG, PNG, WebP ou AVIF).
+
+Puis, dans salon.config.js, remplacez l'adresse de la photo provisoire par le chemin du fichier :
+
+    hero: { src: '/photos/coupe.jpg', alt: 'Brushing au salon', ratio: '4/3' },
+
+Conseils :
+- largeur de 1600 px environ, moins de 400 Ko par photo (le site se charge plus vite) ;
+- « alt » décrit la photo en une phrase : il est lu aux personnes malvoyantes et par Google ;
+- « ratio » (galerie) : '4/5' portrait, '4/3' paysage, '1/1' carré.
