@@ -13,12 +13,12 @@ const { testConfig, testStore, startSite, clockAt, MONDAY, TUESDAY } = require('
 const booking = (extra = {}) => ({ serviceId: 'court', date: TUESDAY, time: '10:00', name: 'Léa Dupont', phone: '0612345678', ...extra });
 
 /** Un site dont les notifications sont notées au lieu de partir sur Internet, coiffeuse connectée. */
-async function salon({ overrides = {} } = {}) {
+async function salon({ overrides = {}, clock = clockAt(), mailer } = {}) {
   const config = testConfig(overrides);
   const store = testStore(config);
   const sent = [];
   const app = createApp({
-    config, store, clock: clockAt(),
+    config, store, clock, mailer,
     sendPush: async (subscription, message) => {
       sent.push({ endpoint: subscription.endpoint, ...message });
       return { ok: true, status: 201, gone: false };
@@ -312,4 +312,82 @@ test('la coiffeuse rallonge, raccourcit, déplace en validant, et superpose si e
   await patch(zoe.id, { date: TUESDAY, time: '10:00' });
   assert.equal((await patch(lea.id, { status: 'confirmed' })).json.code, 'slot_taken');
   assert.equal((await patch(lea.id, { status: 'confirmed', force: true })).json.booking.status, 'confirmed');
+});
+
+test('e-mails : demande reçue, confirmé, déplacé, annulé, et « N\'oubliez pas » la veille', async t => {
+  let now = { date: '2026-10-10', minutes: 600 }; // samedi 10 octobre, 10h
+  const mails = [];
+  const mailer = { enabled: true, send: async message => { mails.push(message); return { ok: true, status: 201 }; } };
+  const site = await salon({ clock: () => now, mailer });
+  t.after(site.stop);
+
+  // La réservation propose l'e-mail ; une adresse fausse est refusée.
+  assert.match((await site.request('GET', '/reservation')).text, /id="email"/);
+  assert.deepEqual(Object.keys((await site.request('POST', '/api/bookings', { body: booking({ email: 'pas-une-adresse' }) })).json.fields), ['email']);
+  const { json } = await site.request('POST', '/api/bookings', { body: booking({ email: 'Lea.Dupont@Example.fr' }) });
+  assert.equal(json.booking.email, undefined, "l'e-mail n'est pas renvoyé au public");
+  assert.equal(mails.length, 1);
+  assert.deepEqual([mails[0].to, mails[0].subject], ['lea.dupont@example.fr', 'Votre demande de rendez-vous du mardi 13 octobre à 10h']);
+  // En bas : les informations pratiques, et le lien de la page du rendez-vous.
+  assert.match(mails[0].text, /Informations pratiques\nAdresse : .+\nTéléphone : 01 99 00 00 00\nItinéraire : https:\/\/www\.google\.com\/maps/);
+  assert.match(mails[0].text, /Voir ou annuler mon rendez-vous : http:\/\/127\.0\.0\.1:\d+\/rendez-vous\?r=/);
+  assert.match(mails[0].html, /Informations pratiques/);
+
+  const [lea] = (await site.call('GET', '/api/salon/data')).json.bookings;
+  assert.equal(lea.email, 'lea.dupont@example.fr', 'la coiffeuse la voit');
+  await site.call('PATCH', `/api/salon/bookings/${lea.id}`, { status: 'confirmed' });
+  assert.equal(mails.at(-1).subject, 'Rendez-vous confirmé : mardi 13 octobre à 10h');
+  await site.call('PATCH', `/api/salon/bookings/${lea.id}`, { date: TUESDAY, time: '11:00' });
+  assert.equal(mails.at(-1).subject, 'Rendez-vous déplacé : mardi 13 octobre à 11h');
+
+  // La veille, 24 h avant : un seul rappel, avec les informations pratiques.
+  assert.equal(site.app.nextDue(), 1440 * 2 + 60);
+  now = { date: '2026-10-12', minutes: 659 };
+  await site.app.tick();
+  assert.equal(mails.length, 3, 'pas encore');
+  now = { date: '2026-10-12', minutes: 660 };
+  await site.app.tick();
+  await site.app.tick();
+  assert.equal(mails.length, 4, 'une seule fois');
+  assert.equal(mails[3].subject, "N'oubliez pas votre rendez-vous demain à 11h");
+  assert.match(mails[3].text, /N'oubliez pas votre rendez-vous mardi 13 octobre à 11h : Court\.[\s\S]*Adresse : /);
+
+  await site.call('PATCH', `/api/salon/bookings/${lea.id}`, { status: 'cancelled' });
+  assert.equal(mails.at(-1).subject, 'Rendez-vous annulé : mardi 13 octobre à 11h');
+  assert.match(mails.at(-1).text, /Prendre un autre rendez-vous : http:\/\/127\.0\.0\.1:\d+\/reservation/);
+
+  // Sans adresse : aucun e-mail ; saisi au salon avec une adresse : « confirmé » tout de suite.
+  const before = mails.length;
+  await site.request('POST', '/api/bookings', { body: booking({ time: '15:00', phone: '0611111111' }) });
+  const walkIn = await site.call('POST', '/api/salon/bookings', { serviceId: 'court', date: TUESDAY, time: '16:00', name: 'Zoé Martin', email: 'zoe@example.fr' });
+  assert.equal(walkIn.status, 201);
+  assert.equal(mails.at(-1).subject, 'Rendez-vous confirmé : mardi 13 octobre à 16h');
+  await site.app.tick();
+  assert.equal(mails.length, before + 1);
+});
+
+test('e-mails éteints (pas de clé) : la réservation ne demande pas d\'adresse', async t => {
+  const site = await salon();
+  t.after(site.stop);
+  assert.doesNotMatch((await site.request('GET', '/reservation')).text, /id="email"/);
+  const { json } = await site.request('POST', '/api/bookings', { body: booking({ email: 'lea@example.fr' }) });
+  assert.equal(site.store.bookings.get(json.reminder.ref.split('.')[0]).email, undefined, 'adresse ignorée');
+});
+
+test('e-mails : la demande envoyée à Brevo', async () => {
+  const { createMailer, readEmail } = require('../src/mail');
+  assert.equal(createMailer({ apiKey: 'cle' }).enabled, false, "sans adresse d'expédition");
+  const calls = [];
+  const mailer = createMailer({
+    apiKey: 'cle', from: 'rdv@salon.fr', name: 'Le salon', replyTo: 'salon@exemple.fr',
+    request: async (url, options) => { calls.push({ url, ...options }); return { ok: true, status: 201 }; },
+  });
+  assert.deepEqual(await mailer.send({ to: 'lea@example.fr', toName: 'Léa', subject: 'Sujet', text: 'Texte', html: '<p>Texte</p>' }), { ok: true, status: 201 });
+  assert.equal(calls[0].url, 'https://api.brevo.com/v3/smtp/email');
+  assert.equal(calls[0].headers['api-key'], 'cle');
+  assert.deepEqual(JSON.parse(calls[0].body), {
+    sender: { email: 'rdv@salon.fr', name: 'Le salon' }, to: [{ email: 'lea@example.fr', name: 'Léa' }],
+    replyTo: { email: 'salon@exemple.fr' }, subject: 'Sujet', textContent: 'Texte', htmlContent: '<p>Texte</p>',
+  });
+  assert.deepEqual(['a@b.fr', 'A.B+c@d.co.uk', 'pas une adresse', 'a@b', '<a@b.fr>'].map(readEmail), ['a@b.fr', 'a.b+c@d.co.uk', '', '', '']);
 });

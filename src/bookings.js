@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const { isValidDate, toMinutes, fromMinutes, addDays } = require('./time');
 const { slotProblem, hasConflict, daySlots, pausesOf } = require('./availability');
+const { readEmail } = require('./mail');
 
 const NAME_RE = /^\p{L}[\p{L}\p{M}'’ .-]{1,59}$/u;
 const STATUSES = ['pending', 'confirmed', 'cancelled'];
@@ -26,12 +27,12 @@ function normalizePhone(raw) {
 const failure = (status, error, extra = {}) => ({ ok: false, status, error, ...extra });
 
 /** closures : donne tous les jours fermés (fermetures saisies et jours fériés, voir src/holidays.js). */
-function createBookings({ config, store, clock, closures = () => store.closures.all() }) {
+function createBookings({ config, store, clock, closures = () => store.closures.all(), acceptEmail = false }) {
   /**
    * Crée un rendez-vous. mode « public » : réservation en ligne (téléphone obligatoire,
    * délai minimum, limite par numéro). mode « salon » : saisi par la coiffeuse.
    */
-  function create(input, { mode = 'public' } = {}) {
+  function create(input, { mode = 'public', site = '' } = {}) {
     const service = config.services.find(s => s.id === input.serviceId);
     if (!service) return failure(400, 'Prestation inconnue.');
     if (!isValidDate(input.date)) return failure(400, 'Date invalide.');
@@ -46,6 +47,12 @@ function createBookings({ config, store, clock, closures = () => store.closures.
     if (mode === 'public' || cleanText(input.phone, 30)) {
       phone = normalizePhone(input.phone);
       if (!phone) fields.phone = 'Indiquez un numéro valide, par exemple 06 12 34 56 78.';
+    }
+    // L'e-mail, facultatif : seulement quand le site sait en envoyer (src/mail.js).
+    let email = '';
+    if (acceptEmail && cleanText(input.email, 120)) {
+      email = readEmail(input.email);
+      if (!email) fields.email = 'Indiquez une adresse e-mail valide, par exemple prenom.nom@gmail.com.';
     }
     const note = cleanText(input.note, 200);
     if (Object.keys(fields).length) return failure(400, 'Vérifiez les informations saisies.', { fields });
@@ -83,7 +90,10 @@ function createBookings({ config, store, clock, closures = () => store.closures.
       priceFrom: service.priceFrom,
       name,
       phone,
+      ...(email && { email }),
       note,
+      // L'adresse du site, pour les liens des e-mails envoyés plus tard (le rappel de la veille).
+      ...(site && { site }),
       status: mode === 'salon' ? 'confirmed' : 'pending',
       source: mode === 'salon' ? 'salon' : 'online',
       createdAt: new Date().toISOString(),

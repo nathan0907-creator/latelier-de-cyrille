@@ -7,7 +7,7 @@
  *  - le salon (classe Salon, un « Durable Object ») : une seule instance, créée en Europe de l'Ouest,
  *    qui fait tourner le site comme sur l'ordinateur du salon (src/app.js) et range ses données dans
  *    sa propre base. Il s'endort quand personne ne visite le site, et se fait réveiller
- *    pour envoyer les rappels et faire l'entretien.
+ *    pour envoyer les rappels (notifications et e-mails) et faire l'entretien.
  */
 
 import { DurableObject } from 'cloudflare:workers';
@@ -37,6 +37,8 @@ export class Salon extends DurableObject {
       // Cloudflare ne signale une page fermée qu'à l'envoi suivant : des battements plus rapprochés,
       // et plus de flux par adresse le temps que ceux des pages fermées s'éteignent.
       live: { heartbeatMs: 10_000, maxPerIp: 30 },
+      // Les e-mails aux clients : secrets BREVO_API_KEY et MAIL_FROM (README, « Les e-mails »).
+      mail: { apiKey: env.BREVO_API_KEY || '', from: env.MAIL_FROM || '' },
     });
     this.handle = toFetchHandler(this.app.handle);
     this.alarmPlanned = false;
@@ -53,13 +55,13 @@ export class Salon extends DurableObject {
   /** Le réveil : l'entretien, puis les rappels arrivés à échéance. */
   async alarm() {
     this.app.maintain();
-    await this.app.reminders.tick();
+    await this.app.tick();
     await this.planAlarm(true);
   }
 
   /** Prochain réveil : au prochain rappel à envoyer, et au moins toutes les heures pour l'entretien. */
   async planAlarm(force = false) {
-    const minutes = Math.min(60, Math.max(1, this.app.reminders.nextDue() ?? 60));
+    const minutes = Math.min(60, Math.max(1, this.app.nextDue() ?? 60));
     // Au début d'une minute, comme l'horloge du salon, avec une seconde de marge.
     const at = (Math.floor(Date.now() / MINUTE) + minutes) * MINUTE + 1000;
     const current = force ? null : await this.ctx.storage.getAlarm();
