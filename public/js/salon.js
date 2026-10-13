@@ -3,8 +3,8 @@
 // Rien n'est chargé tant que la coiffeuse n'est pas connectée ; ensuite tout arrive en direct.
 
 import {
-  h, icon, api, animate, readPageData, debounce, addDays, mondayIndex, formatLong, formatShort,
-  capitalize, fromMinutes, frTime, durationLabel, euros,
+  h, icon, api, animate, readPageData, debounce, addDays, addMonths, daysInMonth, mondayIndex, formatLong, formatShort,
+  formatMonth, capitalize, pad2, fromMinutes, frTime, durationLabel, euros,
 } from './lib.js';
 import { createSettingsViews } from './salon-reglages.js';
 import { createClientsView } from './salon-clients.js';
@@ -546,13 +546,15 @@ function renderDay() {
   refs.dayPicker.value = date;
 
   const closure = closureOn(date);
-  const ranges = closure ? [] : config.hours[weekday(date)];
+  const ranges = dayRanges(date);
   const all = bookingsOn(date);
   const active = all.filter(isActive);
   const cancelled = all.filter(b => !isActive(b));
   const parts = [];
+  const why = closure?.reason ? ` (${closure.reason})` : '';
 
-  if (closure) parts.push(h('p', { class: 'banner' }, icon('ban'), `Salon fermé ce jour-là${closure.reason ? ` : ${closure.reason}` : ''}.`));
+  if (closure && !closure.hours) parts.push(h('p', { class: 'banner' }, icon('ban'), `Salon fermé ce jour-là${closure.reason ? ` : ${closure.reason}` : ''}.`));
+  else if (closure) parts.push(h('p', { class: 'banner' }, icon('clock'), `Ce jour-là, le salon est ${specialLabel(date, ranges)}${why}.`));
   else if (!ranges.length) parts.push(h('p', { class: 'banner' }, icon('ban'), 'Jour de fermeture habituel.'));
 
   if (ranges.length || active.length) parts.push(timeline(date, ranges, active));
@@ -569,8 +571,10 @@ function renderDay() {
 
 function timeline(date, ranges, bookings) {
   const step = config.slotStep;
-  let from = ranges.length ? ranges[0].start : 9 * 60;
-  let to = ranges.length ? ranges.at(-1).end : 18 * 60;
+  // Les heures habituelles restent visibles (hachurées) quand certaines sont bloquées ce jour-là.
+  const span = [...ranges, ...usualHours(date)];
+  let from = span.length ? Math.min(...span.map(range => range.start)) : 9 * 60;
+  let to = span.length ? Math.max(...span.map(range => range.end)) : 18 * 60;
   for (const booking of bookings) {
     from = Math.min(from, Math.floor(booking.start / step) * step);
     to = Math.max(to, Math.ceil((booking.start + booking.duration) / step) * step);
@@ -725,54 +729,31 @@ async function quickConfirm(id) {
 }
 
 // ── Vue « Fermetures » ────────────────────────────────────────────────────
+// Un calendrier : un clic sur un jour pour le fermer, bloquer quelques heures ou changer ses horaires.
+// Un jour particulier remplace les horaires habituels : sans « hours », fermé toute la journée ;
+// avec, ouvert seulement pendant ces plages.
 
 function mountClosures() {
-  const error = h('p', { class: 'notice notice--error', role: 'alert', hidden: true });
-  const date = h('input', { name: 'date', type: 'date', min: state.today, required: true });
-  const until = h('input', { name: 'until', type: 'date', min: state.today });
-  const reason = h('input', { name: 'reason', type: 'text', maxlength: '80', placeholder: 'Congés, formation…' });
-  const form = h('form', { class: 'closure-form', novalidate: true },
-    field({ id: 'fermeture-date', label: 'Fermé du', control: date }),
-    field({ id: 'fermeture-fin', label: "Jusqu'au", optional: true, control: until }),
-    field({ id: 'fermeture-motif', label: 'Motif', optional: true, control: reason }),
-    h('button', { type: 'submit', class: 'btn' }, h('span', {}, 'Fermer'), icon('ban')),
-    error);
-
-  // La date de fin ne peut pas précéder la date de début.
-  date.addEventListener('change', () => {
-    until.min = date.value || state.today;
-    if (until.value && until.value < date.value) until.value = '';
-  });
-
-  const fail = (message, input) => {
-    error.textContent = message;
-    error.hidden = false;
-    input?.focus();
+  state.closureMonth ||= state.today.slice(0, 7);
+  const move = n => {
+    state.closureMonth = addMonths(state.closureMonth, n);
+    renderClosures();
+    animate(refs.closureCalendar, [{ opacity: 0 }, { opacity: 1 }], { duration: 300 });
   };
-
-  form.addEventListener('submit', async event => {
-    event.preventDefault();
-    error.hidden = true;
-    if (!date.value) return fail('Choisissez le premier jour de fermeture.', date);
-    if (until.value && until.value < date.value) return fail('La date de fin doit suivre la date de début.', until);
-    const period = { from: date.value, to: until.value || date.value };
-    try {
-      const { closures } = await call('/api/salon/closures', { method: 'POST', body: { date: period.from, until: period.to, reason: reason.value } });
-      state.closures = closures;
-      form.reset();
-      until.min = state.today;
-      refresh();
-      toast(`Le salon sera fermé ${periodLabel(period)}. C'est annoncé sur le site.`);
-    } catch (err) {
-      fail(err.message);
-    }
-  });
-
+  refs.closureTitle = h('h2', { class: 'day-title', 'aria-live': 'polite' });
+  refs.closurePrev = h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Mois précédent', onclick: () => move(-1) }, icon('chevron-left'));
+  refs.closureCalendar = h('div', { class: 'cal', role: 'group', 'aria-labelledby': 'mois-fermetures' });
+  refs.closureTitle.id = 'mois-fermetures';
   refs.closureList = h('div', {});
   refs.holidayList = h('section', { class: 'holidays', 'aria-labelledby': 'feries-titre' });
   refs.view.replaceChildren(
-    h('p', { class: 'view-lead' }, "Pour des congés, indiquez le premier et le dernier jour : la fermeture est annoncée dans le bandeau du site et ces jours ne sont plus proposés à la réservation. Les rendez-vous déjà pris restent enregistrés : pensez à prévenir les clients concernés."),
-    form,
+    h('p', { class: 'view-lead' }, "Touchez un jour pour le fermer, bloquer quelques heures ou changer ses horaires. Ces heures ne sont plus proposées à la réservation, et une fermeture d'une journée ou plus est annoncée sur le site. Les rendez-vous déjà pris restent enregistrés : pensez à prévenir les clients concernés."),
+    h('div', { class: 'day-nav' },
+      refs.closurePrev,
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Mois suivant', onclick: () => move(1) }, icon('chevron-right')),
+      refs.closureTitle),
+    refs.closureCalendar,
+    h('h3', { class: 'group-title' }, 'À venir'),
     refs.closureList,
     refs.holidayList);
   renderClosures();
@@ -805,7 +786,7 @@ function renderHolidays() {
     h('label', { class: 'check', for: 'feries-auto' }, toggle, h('span', {}, 'Fermer le salon les jours fériés')),
     h('p', { class: 'view-lead' }, auto
       ? "Ces jours-là sont fermés d'office et annoncés sur le site, sans rien avoir à saisir. Vous travaillez l'un d'eux ? Ouvrez-le : il sera proposé à la réservation, à vos horaires habituels."
-      : 'La fermeture automatique est arrêtée : les jours fériés sont ouverts à vos horaires habituels. Pour en fermer un, saisissez-le dans le formulaire ci-dessus.'),
+      : 'La fermeture automatique est arrêtée : les jours fériés sont ouverts à vos horaires habituels. Pour en fermer un, touchez-le dans le calendrier ci-dessus.'),
     ...list.map(day => {
       const affected = day.open ? 0 : bookingsOn(day.date).filter(isActive).length;
       return h('article', { class: 'row row--closure' },
@@ -823,7 +804,141 @@ function renderHolidays() {
               : `Le salon sera ouvert le ${formatLong(day.date)} (${day.name}).`),
           }, h('span', {}, day.open ? 'Refermer' : 'Ouvrir ce jour-là'))) : null);
     }),
-    list.length ? null : h('p', { class: 'empty' }, 'Aucun jour férié ne tombe un jour travaillé dans les douze mois à venir.'));
+    ...(list.length ? [] : [h('p', { class: 'empty' }, 'Aucun jour férié ne tombe un jour travaillé dans les douze mois à venir.')]));
+}
+
+const usualHours = date => config.hours[weekday(date)] || [];
+/** Les plages d'ouverture d'un jour : ses horaires particuliers, sinon les horaires habituels. */
+const dayRanges = date => {
+  const closure = closureOn(date);
+  return closure ? closure.hours || [] : usualHours(date);
+};
+/** 570 → « 9h30 », 540 → « 9h » */
+const shortTime = minutes => `${Math.floor(minutes / 60)}h${minutes % 60 ? pad2(minutes % 60) : ''}`;
+const rangeLabel = range => `${shortTime(range.start)} – ${shortTime(range.end)}`;
+const rangesLabel = ranges => ranges.map(rangeLabel).join(' et ');
+
+/** Les rendez-vous d'un jour qui tombent en dehors de ces plages d'ouverture. */
+const outside = (date, ranges) => bookingsOn(date).filter(isActive)
+  .filter(b => !ranges.some(range => b.start >= range.start && b.start + b.duration <= range.end)).length;
+
+/** Les horaires habituels moins quelques heures bloquées. */
+const withoutBlock = (ranges, from, to) => ranges.flatMap(range => [
+  { start: range.start, end: Math.min(range.end, from) },
+  { start: Math.max(range.start, to), end: range.end },
+]).filter(range => range.end > range.start);
+
+/** Les heures bloquées d'un jour, si ses horaires sont les habituels moins une seule tranche. */
+function blockOf(date, hours) {
+  const usual = usualHours(date);
+  for (const range of usual) {
+    for (let from = range.start; from < range.end; from += config.slotStep) {
+      for (let to = from + config.slotStep; to <= range.end; to += config.slotStep) {
+        if (JSON.stringify(withoutBlock(usual, from, to)) === JSON.stringify(hours)) return { from, to };
+      }
+    }
+  }
+  return null;
+}
+
+/** Ce qui change un jour particulier, en clair : « fermé de 9h30 à 11h » ou « ouvert 14h – 16h ». */
+function specialLabel(date, hours) {
+  const block = blockOf(date, hours);
+  return block ? `fermé de ${shortTime(block.from)} à ${shortTime(block.to)}` : `ouvert ${rangesLabel(hours)}`;
+}
+
+function renderClosures() {
+  const month = state.closureMonth;
+  refs.closureTitle.textContent = capitalize(formatMonth(month));
+  refs.closurePrev.disabled = month <= state.today.slice(0, 7);
+  const days = daysInMonth(month);
+  refs.closureCalendar.replaceChildren(
+    ...['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'].map(name => h('span', { class: 'cal-head', 'aria-hidden': 'true' }, name)),
+    ...Array.from({ length: mondayIndex(days[0]) }, () => h('span', { 'aria-hidden': 'true' })),
+    ...days.map(calendarDay));
+  renderClosureList();
+  renderHolidays();
+}
+
+function calendarDay(date) {
+  const closure = closureOn(date);
+  const ranges = dayRanges(date);
+  const kind = closure ? (closure.hours ? 'special' : 'closed') : ranges.length ? 'open' : 'off';
+  const count = bookingsOn(date).filter(isActive).length;
+  const block = kind === 'special' ? blockOf(date, ranges) : null;
+  const summary = {
+    closed: `fermé${closure?.reason ? ` (${closure.reason})` : ''}`,
+    special: kind === 'special' ? specialLabel(date, ranges) : '',
+    open: `ouvert, ${rangesLabel(ranges)}`,
+    off: "fermé d'habitude",
+  }[kind];
+  return h('button', {
+    type: 'button',
+    class: `cal-day cal-day--${kind}${date === state.today ? ' is-today' : ''}`,
+    disabled: date < state.today,
+    'aria-label': `${capitalize(formatLong(date))} : ${summary}${count ? `, ${plural(count, 'rendez-vous', 'rendez-vous')}` : ''}`,
+    onclick: () => openDayHours(date),
+  },
+  h('span', { class: 'cal-num' }, String(Number(date.slice(8)))),
+  kind === 'closed' || kind === 'off' ? h('span', { class: 'cal-note' }, 'Fermé') : null,
+  block ? [h('span', { class: 'cal-note' }, 'Fermé'), h('span', { class: 'cal-note' }, `${shortTime(block.from)}–${shortTime(block.to)}`)] : null,
+  kind === 'special' && !block ? ranges.map(range => h('span', { class: 'cal-note' }, `${shortTime(range.start)}–${shortTime(range.end)}`)) : null,
+  count ? h('span', { class: 'cal-count' }, plural(count, 'rdv', 'rdv')) : null);
+}
+
+/** La liste des fermetures et des jours particuliers à venir, sous le calendrier. */
+function renderClosureList() {
+  const upcoming = state.closures.filter(c => c.date >= state.today);
+  const items = [
+    ...closurePeriods(upcoming.filter(c => !c.hours)).map(period => ({ date: period.from, period })),
+    ...upcoming.filter(c => c.hours).map(closure => ({ date: closure.date, closure })),
+  ].sort((a, b) => a.date.localeCompare(b.date));
+  if (!items.length) {
+    refs.closureList.replaceChildren(h('p', { class: 'empty' }, 'Aucune fermeture ni horaire particulier prévus.'));
+    return;
+  }
+  const restore = (from, to, message) => async () => {
+    try {
+      const { closures } = await call(`/api/salon/closures/${from}?until=${to}`, { method: 'DELETE' });
+      state.closures = closures;
+      refresh();
+      toast(message);
+    } catch (err) {
+      toast(err.message, { type: 'error' });
+    }
+  };
+  refs.closureList.replaceChildren(...items.map(({ period, closure }) => {
+    if (closure) {
+      const moved = outside(closure.date, closure.hours);
+      return h('article', { class: 'row row--closure' },
+        h('div', { class: 'row-time' }, h('strong', {}, capitalize(formatShort(closure.date)))),
+        h('div', { class: 'row-main' },
+          h('p', { class: 'row-name' }, h('span', {}, capitalize(specialLabel(closure.date, closure.hours))),
+            moved ? h('span', { class: 'badge badge--pending' }, `${plural(moved, 'rendez-vous', 'rendez-vous')} à déplacer`) : null),
+          closure.reason ? h('p', { class: 'row-meta' }, closure.reason) : null),
+        h('div', { class: 'row-actions' },
+          h('button', { type: 'button', class: 'btn btn--small btn--outline', onclick: () => openDayHours(closure.date) }, h('span', {}, 'Modifier')),
+          h('button', {
+            type: 'button', class: 'btn btn--small btn--outline', 'aria-label': `Horaires habituels le ${formatLong(closure.date)}`,
+            onclick: restore(closure.date, closure.date, `Horaires habituels rétablis le ${formatLong(closure.date)}.`),
+          }, h('span', {}, 'Horaires habituels'))));
+    }
+    const single = period.from === period.to;
+    const affected = period.dates.reduce((total, day) => total + bookingsOn(day).filter(isActive).length, 0);
+    return h('article', { class: 'row row--closure' },
+      h('div', { class: 'row-time' },
+        h('strong', {}, capitalize(formatShort(period.from))),
+        single ? null : h('span', {}, `au ${formatShort(period.to)}`)),
+      h('div', { class: 'row-main' },
+        h('p', { class: 'row-name' }, h('span', {}, period.reason || 'Salon fermé'),
+          single ? null : h('span', { class: 'badge badge--neutral' }, plural(period.dates.length, 'jour', 'jours')),
+          affected ? h('span', { class: 'badge badge--pending' }, `${plural(affected, 'rendez-vous', 'rendez-vous')} à déplacer`) : null)),
+      h('div', { class: 'row-actions' },
+        h('button', {
+          type: 'button', class: 'btn btn--small btn--outline', 'aria-label': `Rouvrir ${periodLabel(period)}`,
+          onclick: restore(period.from, period.to, `Le salon est de nouveau ouvert ${periodLabel(period)}.`),
+        }, h('span', {}, 'Rouvrir'))));
+  }));
 }
 
 /** « le mardi 20 octobre » ou « du mardi 20 octobre au samedi 31 octobre » */
@@ -836,7 +951,7 @@ const periodLabel = period => (period.from === period.to
  * deux jours que des jours de fermeture habituelle.
  */
 function closurePeriods(list) {
-  const usuallyClosed = day => !(config.hours[weekday(day)] || []).length;
+  const usuallyClosed = day => !closureOn(day) && !usualHours(day).length;
   const periods = [];
   for (const closure of list) {
     const reason = (closure.reason || '').trim();
@@ -855,39 +970,140 @@ function closurePeriods(list) {
   return periods;
 }
 
-function renderClosures() {
-  renderHolidays();
-  const periods = closurePeriods(state.closures.filter(c => c.date >= state.today));
-  if (!periods.length) {
-    refs.closureList.replaceChildren(h('p', { class: 'empty' }, 'Aucune fermeture prévue.'));
-    return;
+// — Un jour du calendrier : fermé, quelques heures bloquées, ou d'autres horaires —
+
+function openDayHours(date) {
+  const usual = usualHours(date);
+  const closure = closureOn(date);
+  const saved = state.closures.find(c => c.date === date);
+  // Un jour férié fermé d'office : « comme d'habitude » l'ouvre.
+  const holiday = state.holidays.list.find(day => day.date === date);
+  const eyebrow = holiday ? `${holiday.name} · ${usual.length ? `d'habitude ${rangesLabel(usual)}` : "fermé d'habitude"}`
+    : usual.length ? `D'habitude : ${rangesLabel(usual)}` : "Fermé d'habitude";
+  const sheet = openSheet({ eyebrow, title: capitalize(formatLong(date)) });
+  const error = h('p', { class: 'notice notice--error', role: 'alert', hidden: true });
+  const warning = h('p', { class: 'notice', hidden: true });
+
+  const step = config.slotStep;
+  const timeSelect = (name, value) => {
+    const select = h('select', { name });
+    for (let minute = 6 * 60; minute <= 22 * 60; minute += step) {
+      select.append(h('option', { value: String(minute), selected: minute === value }, shortTime(minute)));
+    }
+    return select;
+  };
+  const first = usual[0] || { start: 9 * 60, end: 18 * 60 };
+  const block = closure?.hours ? blockOf(date, closure.hours) : null;
+  const special = closure?.hours && !block ? closure.hours : null;
+  const blockFrom = timeSelect('blockFrom', block?.from ?? 12 * 60);
+  const blockTo = timeSelect('blockTo', block?.to ?? 14 * 60);
+  const opens = timeSelect('opens', special ? special[0].start : first.start);
+  const closes = timeSelect('closes', special ? special.at(-1).end : (usual.at(-1) || first).end);
+  const until = h('input', { name: 'until', type: 'date', min: date });
+  const reason = h('input', { name: 'reason', type: 'text', maxlength: '80', placeholder: 'Congés, formation, rendez-vous…', value: saved?.reason || '' });
+
+  const modes = [
+    { key: 'usual', label: usual.length ? `Ouvert comme d'habitude${holiday ? ', même férié' : ''}` : "Fermé, comme d'habitude" },
+    { key: 'closed', label: 'Fermé toute la journée', extra: field({ id: 'jour-jusqu', label: "Jusqu'au", optional: true, hint: 'Pour des congés : le dernier jour de fermeture.', control: until }) },
+    usual.length ? { key: 'block', label: 'Fermé quelques heures', extra: h('div', { class: 'field-row' }, field({ id: 'jour-bloque-de', label: 'Fermé de', control: blockFrom }), field({ id: 'jour-bloque-a', label: 'À', control: blockTo })) } : null,
+    { key: 'hours', label: usual.length ? 'Autres horaires ce jour-là' : 'Ouvert ce jour-là', extra: h('div', { class: 'field-row' }, field({ id: 'jour-ouvre', label: 'Ouvre à', control: opens }), field({ id: 'jour-ferme', label: 'Ferme à', control: closes })) },
+  ].filter(Boolean);
+  let mode = closure ? (closure.hours ? (block ? 'block' : 'hours') : 'closed') : 'usual';
+
+  const choices = h('div', { class: 'choices', role: 'radiogroup', 'aria-label': 'Ce jour-là' });
+  const reasonField = field({ id: 'jour-motif', label: 'Motif', optional: true, hint: 'Affiché sur le site pour une fermeture.', control: reason });
+
+  /** Les plages d'ouverture choisies, ou une erreur. [] : fermé toute la journée. */
+  function chosen() {
+    if (mode === 'usual') return { ranges: usual };
+    if (mode === 'closed') return { ranges: [] };
+    if (mode === 'block') {
+      const from = Number(blockFrom.value);
+      const to = Number(blockTo.value);
+      if (to <= from) return { error: "L'heure de réouverture doit suivre l'heure de fermeture." };
+      const ranges = withoutBlock(usual, from, to);
+      if (JSON.stringify(ranges) === JSON.stringify(usual)) return { error: 'Ces heures sont déjà en dehors des horaires du salon.' };
+      return { ranges };
+    }
+    const from = Number(opens.value);
+    const to = Number(closes.value);
+    if (to <= from) return { error: "L'heure de fermeture doit suivre l'heure d'ouverture." };
+    return { ranges: [{ start: from, end: to }] };
   }
-  refs.closureList.replaceChildren(...periods.map(period => {
-    const single = period.from === period.to;
-    const affected = period.dates.reduce((total, day) => total + bookingsOn(day).filter(isActive).length, 0);
-    return h('article', { class: 'row row--closure' },
-      h('div', { class: 'row-time' },
-        h('strong', {}, capitalize(formatShort(period.from))),
-        single ? null : h('span', {}, `au ${formatShort(period.to)}`)),
-      h('div', { class: 'row-main' },
-        h('p', { class: 'row-name' }, h('span', {}, period.reason || 'Salon fermé'),
-          single ? null : h('span', { class: 'badge badge--neutral' }, plural(period.dates.length, 'jour', 'jours')),
-          affected ? h('span', { class: 'badge badge--pending' }, `${plural(affected, 'rendez-vous', 'rendez-vous')} à déplacer`) : null)),
-      h('div', { class: 'row-actions' },
-        h('button', {
-          type: 'button', class: 'btn btn--small btn--outline', 'aria-label': `Rouvrir ${periodLabel(period)}`,
-          onclick: async () => {
-            try {
-              const { closures } = await call(`/api/salon/closures/${period.from}?until=${period.to}`, { method: 'DELETE' });
-              state.closures = closures;
-              refresh();
-              toast(`Le salon est de nouveau ouvert ${periodLabel(period)}.`);
-            } catch (err) {
-              toast(err.message, { type: 'error' });
-            }
-          },
-        }, h('span', {}, 'Rouvrir'))));
-  }));
+
+  function update() {
+    for (const choice of choices.children) {
+      const selected = choice.dataset.mode === mode;
+      choice.classList.toggle('is-selected', selected);
+      choice.querySelector('input').checked = selected;
+      const extra = choice.querySelector('.choice-extra');
+      if (extra) extra.hidden = !selected;
+    }
+    reasonField.hidden = mode === 'usual';
+    error.hidden = true;
+    const result = chosen();
+    let moved = result.ranges ? outside(date, result.ranges) : 0;
+    if (mode === 'closed' && until.value > date) {
+      for (let day = addDays(date, 1); day <= until.value; day = addDays(day, 1)) moved += bookingsOn(day).filter(isActive).length;
+    }
+    warning.hidden = !moved;
+    warning.textContent = `${plural(moved, 'rendez-vous déjà pris tombe', 'rendez-vous déjà pris tombent')} pendant les heures fermées : ils restent enregistrés, pensez à prévenir les clients.`;
+  }
+
+  for (const option of modes) {
+    const input = h('input', { type: 'radio', name: 'mode', value: option.key });
+    input.addEventListener('change', () => {
+      mode = option.key;
+      update();
+    });
+    choices.append(h('div', { class: 'choice', dataset: { mode: option.key } },
+      h('label', { class: 'choice-label' }, input, h('span', {}, option.label)),
+      option.extra ? h('div', { class: 'choice-extra' }, option.extra) : null));
+  }
+  for (const control of [blockFrom, blockTo, opens, closes, until]) control.addEventListener('change', update);
+
+  const submit = h('button', { type: 'submit', class: 'btn' }, h('span', {}, 'Enregistrer'), icon('check'));
+  const form = h('form', { class: 'sheet-form', novalidate: true }, choices, reasonField, warning, error, h('div', { class: 'sheet-actions' }, submit));
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const result = chosen();
+    if (result.error) {
+      error.textContent = result.error;
+      error.hidden = false;
+      return;
+    }
+    submit.disabled = true;
+    try {
+      let closures;
+      let message;
+      if (mode === 'usual') {
+        if (saved) ({ closures } = await call(`/api/salon/closures/${date}`, { method: 'DELETE' }));
+        if (holiday && !holiday.open && usual.length) ({ holidays: state.holidays } = await call('/api/salon/holidays', { method: 'PUT', body: { date, open: true } }));
+        message = usual.length ? `Horaires habituels le ${formatLong(date)}.` : `Le ${formatLong(date)} reste fermé, comme d'habitude.`;
+      } else if (!result.ranges.length) {
+        const period = { from: date, to: until.value > date ? until.value : date };
+        ({ closures } = await call('/api/salon/closures', { method: 'POST', body: { date, until: period.to, reason: reason.value } }));
+        message = `Le salon sera fermé ${periodLabel(period)}. C'est annoncé sur le site.`;
+      } else {
+        const hours = result.ranges.map(range => ({ start: fromMinutes(range.start), end: fromMinutes(range.end) }));
+        ({ closures } = await call('/api/salon/closures', { method: 'POST', body: { date, reason: reason.value, hours } }));
+        message = `Le ${formatLong(date)}, le salon sera ${specialLabel(date, result.ranges)}.`;
+      }
+      if (closures) state.closures = closures;
+      sheet.dialog.close();
+      refresh();
+      toast(message);
+    } catch (err) {
+      error.textContent = err.message;
+      error.hidden = false;
+      submit.disabled = false;
+    }
+  });
+
+  sheet.body.replaceChildren(form);
+  update();
+  choices.querySelector('input:checked')?.focus();
 }
 
 // ── Vue « Fréquentation » ─────────────────────────────────────────────────

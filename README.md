@@ -102,8 +102,8 @@ Cyrille peut aussi ajouter, décrire, ranger et retirer des photos elle-même, d
 - Confirmer, **déplacer** à un autre jour ou une autre heure, annuler (le créneau est aussitôt reproposé), rétablir, supprimer.
 - Noter un rendez-vous pris par téléphone ou au salon.
 - **Fréquentation** : visiteurs, pages vues, réservations en ligne, provenance (Google, Facebook…) et part des téléphones sur 30 jours. Le site compte lui-même, sans cookie ni service extérieur.
-- **Jours fériés** : le salon est fermé d'office ces jours-là, sans rien saisir, et le site l'annonce (bandeau de la une, « En bref », page de réservation). Dans l'onglet Fermetures, la coiffeuse ouvre celui qu'elle travaille, ou arrête la fermeture automatique. Un jour férié qui tombe un jour de repos ne s'affiche pas.
-- Fermer un jour, ou une période entière pour des congés (du… au…, avec un motif). La fermeture est annoncée sur le site : dans le bandeau en haut de la une (en fixe quand elle est en cours ou dans les quinze jours), dans « En bref » et sur la page de réservation, avec le jour de réouverture.
+- **Jours fériés** : le salon est fermé d'office ces jours-là, sans rien saisir, et le site l'annonce (bandeau de la une, « En bref », page de réservation). Dans l'onglet Fermetures, la coiffeuse ouvre celui qu'elle travaille (dans la liste, ou sur le calendrier), ou arrête la fermeture automatique. Un jour férié qui tombe un jour de repos ne s'affiche pas.
+- **Fermetures**, sur un calendrier : un clic sur un jour pour le fermer toute la journée (ou jusqu'à une date, pour des congés), bloquer quelques heures (« fermé de 9h30 à 11h ») ou lui donner d'autres horaires (ouvrir exceptionnellement un samedi, par exemple). Les heures fermées ne sont plus proposées à la réservation. Une fermeture d'une journée ou plus est annoncée sur le site : dans le bandeau en haut de la une (en fixe quand elle est en cours ou dans les quinze jours), dans « En bref » et sur la page de réservation, avec le jour de réouverture.
 
 ## Sécurité de l'espace salon
 
@@ -178,7 +178,7 @@ En ligne sur Cloudflare, les mêmes données sont rangées dans la base du site 
 npm test
 ```
 
-87 tests couvrent le calcul des créneaux, les réservations, l'authentification, la sécurité HTTP, le lancement, les rappels (chiffrement vérifié sur l'exemple de la norme), la liste de contrôle (référencement, liens, images, HTTPS, fichiers privés, fréquentation) les jours fériés, les pages par prestation, la réservation au plus tard la veille, l'annulation par le client et les notifications du salon, les réglages de l'espace salon (tarifs, horaires, photos, déplacement d'un rendez-vous) et le fonctionnement sur Cloudflare (pages, réservation et direct à travers l'adaptateur, code de configuration, base de données, réglages et photos).
+89 tests couvrent le calcul des créneaux, les réservations, l'authentification, la sécurité HTTP, le lancement, les rappels (chiffrement vérifié sur l'exemple de la norme), la liste de contrôle (référencement, liens, images, HTTPS, fichiers privés, fréquentation) les jours fériés, les fermetures (jours entiers, heures bloquées, autres horaires), les pages par prestation, la réservation au plus tard la veille, l'annulation par le client et les notifications du salon, les réglages de l'espace salon (tarifs, horaires, photos, déplacement d'un rendez-vous) et le fonctionnement sur Cloudflare (pages, réservation et direct à travers l'adaptateur, code de configuration, base de données, réglages et photos).
 
 ## Mettre le site en ligne sur Cloudflare
 

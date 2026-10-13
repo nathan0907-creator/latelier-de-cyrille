@@ -1,13 +1,39 @@
 'use strict';
 
-const { addDays, daysBetween, weekday, daysInMonth, fromMinutes } = require('./time');
+const { addDays, daysBetween, weekday, daysInMonth, fromMinutes, toMinutes } = require('./time');
 
 /** Un rendez-vous annulé libère son créneau. */
 const isActive = booking => booking.status !== 'cancelled';
 
+/**
+ * Les plages d'ouverture d'un jour. Un jour particulier, choisi par la coiffeuse (une « fermeture »),
+ * remplace les horaires habituels : sans « hours », fermé toute la journée ; avec, ouvert seulement
+ * pendant ces plages (quelques heures bloquées, ou d'autres horaires ce jour-là).
+ */
 function openRanges(config, closures, date) {
-  if (closures.some(c => c.date === date)) return [];
+  const closure = closures.find(c => c.date === date);
+  if (closure) return closure.hours || [];
   return config.hours[weekday(date)];
+}
+
+/** Fermé toute la journée (et non quelques heures seulement). */
+const isFullClosure = closure => !closure.hours;
+
+/**
+ * Les horaires d'un jour particulier, envoyés par l'espace salon : [{ start: '09:30', end: '12:00' }, …].
+ * Renvoie { hours } (en minutes, dans l'ordre) ou { error }.
+ */
+function readDayHours(input, slotStep) {
+  if (!Array.isArray(input) || !input.length || input.length > 3) return { error: 'Indiquez une à trois plages horaires.' };
+  const hours = input.map(range => ({ start: toMinutes(range?.start), end: toMinutes(range?.end) }));
+  if (hours.some(range => range.start === null || range.end === null)) return { error: 'Heure invalide.' };
+  if (hours.some(range => range.end <= range.start)) return { error: "L'heure de fermeture doit suivre l'heure d'ouverture." };
+  if (hours.some(range => range.start % slotStep || range.end % slotStep)) return { error: `Choisissez des heures par tranches de ${slotStep} minutes.` };
+  hours.sort((a, b) => a.start - b.start);
+  for (let i = 1; i < hours.length; i++) {
+    if (hours[i].start < hours[i - 1].end) return { error: 'Les plages horaires se chevauchent.' };
+  }
+  return { hours };
 }
 
 const lastBookableDate = (config, today) => addDays(today, config.booking.maxDaysAhead);
@@ -138,12 +164,12 @@ function openStatus({ config, closures, now }) {
 function closurePeriods({ config, closures, now, horizon = 90 }) {
   const today = now.date;
   const limit = addDays(today, horizon);
-  const usuallyClosed = date => !config.hours[weekday(date)].length;
-  const closedDates = new Set(closures.map(closure => closure.date));
-  const isClosed = date => usuallyClosed(date) || closedDates.has(date);
+  // Un jour où seules quelques heures sont bloquées n'est pas une fermeture.
+  const usuallyClosed = date => !closures.some(c => c.date === date) && !config.hours[weekday(date)].length;
+  const isClosed = date => !openRanges(config, closures, date).length;
 
   const periods = [];
-  for (const closure of [...closures].sort((a, b) => a.date.localeCompare(b.date))) {
+  for (const closure of closures.filter(isFullClosure).sort((a, b) => a.date.localeCompare(b.date))) {
     const reason = (closure.reason || '').trim();
     const last = periods.at(-1);
     let joins = Boolean(last) && last.reason.toLowerCase() === reason.toLowerCase();
@@ -164,6 +190,6 @@ function closurePeriods({ config, closures, now, horizon = 90 }) {
 }
 
 module.exports = {
-  isActive, pausesOf, busyParts, openRanges, firstBookableDate, lastBookableDate, hasConflict, daySlots, monthSummary, nextSlot, nextOpenDays, slotProblem, openStatus,
+  isActive, pausesOf, busyParts, openRanges, isFullClosure, readDayHours, firstBookableDate, lastBookableDate, hasConflict, daySlots, monthSummary, nextSlot, nextOpenDays, slotProblem, openStatus,
   closurePeriods,
 };

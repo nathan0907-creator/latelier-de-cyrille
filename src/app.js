@@ -367,16 +367,25 @@ function createApp({
       return json(200, { ok: true });
     }
 
-    // Une fermeture : un jour, ou une période entière (des congés) avec « until ».
+    // Une fermeture : un jour, ou une période entière (des congés) avec « until ». Avec « hours »,
+    // le jour n'est pas fermé : il est ouvert seulement pendant ces plages (heures bloquées, ou
+    // horaires particuliers ce jour-là).
     if (route === 'POST /api/salon/closures') {
       const body = await readJson(req);
       if (!isValidDate(body.date) || body.date < clock().date) return json(400, { error: 'Choisissez une date à venir.' });
       const until = body.until || body.date;
       if (!isValidDate(until) || until < body.date) return json(400, { error: 'La date de fin doit suivre la date de début.' });
       if (daysBetween(body.date, until) > 62) return json(400, { error: 'Une fermeture ne peut pas dépasser deux mois. Enregistrez-la en deux fois.' });
+      let hours;
+      if (body.hours !== undefined && body.hours !== null) {
+        if (until !== body.date) return json(400, { error: 'Des horaires particuliers se choisissent jour par jour.' });
+        const result = availability.readDayHours(body.hours, config.booking.slotStep);
+        if (result.error) return json(400, { error: result.error });
+        ({ hours } = result);
+      }
       const reason = cleanText(body.reason, 80);
       const added = [];
-      for (let date = body.date; date <= until; date = addDays(date, 1)) added.push({ date, reason });
+      for (let date = body.date; date <= until; date = addDays(date, 1)) added.push({ date, reason, ...(hours && { hours }) });
       store.closures.addMany(added);
       for (const closure of added) events.send('public', 'slots', { date: closure.date });
       events.send('salon', 'closures', { closures: store.closures.all(), holidays: holidays.state() });
