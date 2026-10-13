@@ -944,7 +944,7 @@ const dayRanges = date => {
 /** 570 → « 9h30 », 540 → « 9h » */
 const shortTime = minutes => `${Math.floor(minutes / 60)}h${minutes % 60 ? pad2(minutes % 60) : ''}`;
 const rangeLabel = range => `${shortTime(range.start)} – ${shortTime(range.end)}`;
-const rangesLabel = ranges => ranges.map(rangeLabel).join(' et ');
+const rangesLabel = ranges => ranges.map(rangeLabel).join(', ').replace(/, (?=[^,]*$)/, ' et ');
 
 /** Les rendez-vous d'un jour qui tombent en dehors de ces plages d'ouverture. */
 const outside = (date, ranges) => bookingsOn(date).filter(isActive)
@@ -1104,100 +1104,110 @@ function openDayHours(date) {
   const usual = usualHours(date);
   const closure = closureOn(date);
   const saved = state.closures.find(c => c.date === date);
-  // Un jour férié fermé d'office : « comme d'habitude » l'ouvre.
+  // Un jour férié fermé d'office : revenir aux horaires habituels l'ouvre.
   const holiday = state.holidays.list.find(day => day.date === date);
   const eyebrow = holiday ? `${holiday.name} · ${usual.length ? `d'habitude ${rangesLabel(usual)}` : "fermé d'habitude"}`
     : usual.length ? `D'habitude : ${rangesLabel(usual)}` : "Fermé d'habitude";
   const sheet = openSheet({ eyebrow, title: capitalize(formatLong(date)) });
   const error = h('p', { class: 'notice notice--error', role: 'alert', hidden: true });
   const warning = h('p', { class: 'notice', hidden: true });
-
   const step = config.slotStep;
-  const timeSelect = (name, value) => {
-    const select = h('select', { name });
-    for (let minute = 6 * 60; minute <= 22 * 60; minute += step) {
-      select.append(h('option', { value: String(minute), selected: minute === value }, shortTime(minute)));
+
+  /**
+   * Le planning du jour : une ligne par tranche (une demi-heure), ouverte ou fermée. La coiffeuse
+   * touche une ligne pour la fermer ou l'ouvrir ; les rendez-vous du jour s'y lisent en face.
+   */
+  const current = closure ? closure.hours || [] : usual;
+  const known = [...usual, ...current];
+  const first = Math.min(8 * 60, ...known.map(range => range.start));
+  const last = Math.max(20 * 60, ...known.map(range => range.end));
+  const isOpenIn = (ranges, minute) => ranges.some(range => minute >= range.start && minute < range.end);
+  const open = new Set();
+  for (let minute = first; minute < last; minute += step) if (isOpenIn(current, minute)) open.add(minute);
+  const dayBookings = bookingsOn(date).filter(isActive);
+
+  /** Les tranches ouvertes, regroupées en plages (9h – 12h, 14h – 18h). */
+  function ranges() {
+    const result = [];
+    for (let minute = first; minute < last; minute += step) {
+      if (!open.has(minute)) continue;
+      const previous = result.at(-1);
+      if (previous && previous.end === minute) previous.end += step;
+      else result.push({ start: minute, end: minute + step });
     }
-    return select;
-  };
-  const first = usual[0] || { start: 9 * 60, end: 18 * 60 };
-  const block = closure?.hours ? blockOf(date, closure.hours) : null;
-  const special = closure?.hours && !block ? closure.hours : null;
-  const blockFrom = timeSelect('blockFrom', block?.from ?? 12 * 60);
-  const blockTo = timeSelect('blockTo', block?.to ?? 14 * 60);
-  const opens = timeSelect('opens', special ? special[0].start : first.start);
-  const closes = timeSelect('closes', special ? special.at(-1).end : (usual.at(-1) || first).end);
-  const until = h('input', { name: 'until', type: 'date', min: date });
-  const reason = h('input', { name: 'reason', type: 'text', maxlength: '80', placeholder: 'Congés, formation, rendez-vous…', value: saved?.reason || '' });
+    return result;
+  }
+  const sameAsUsual = () => JSON.stringify(ranges()) === JSON.stringify(usual);
 
-  const modes = [
-    { key: 'usual', label: usual.length ? `Ouvert comme d'habitude${holiday ? ', même férié' : ''}` : "Fermé, comme d'habitude" },
-    { key: 'closed', label: 'Fermé toute la journée', extra: field({ id: 'jour-jusqu', label: "Jusqu'au", optional: true, hint: 'Pour des congés : le dernier jour de fermeture.', control: until }) },
-    usual.length ? { key: 'block', label: 'Fermé quelques heures', extra: h('div', { class: 'field-row' }, field({ id: 'jour-bloque-de', label: 'Fermé de', control: blockFrom }), field({ id: 'jour-bloque-a', label: 'À', control: blockTo })) } : null,
-    { key: 'hours', label: usual.length ? 'Autres horaires ce jour-là' : 'Ouvert ce jour-là', extra: h('div', { class: 'field-row' }, field({ id: 'jour-ouvre', label: 'Ouvre à', control: opens }), field({ id: 'jour-ferme', label: 'Ferme à', control: closes })) },
-  ].filter(Boolean);
-  let mode = closure ? (closure.hours ? (block ? 'block' : 'hours') : 'closed') : 'usual';
-
-  const choices = h('div', { class: 'choices', role: 'radiogroup', 'aria-label': 'Ce jour-là' });
-  const reasonField = field({ id: 'jour-motif', label: 'Motif', optional: true, hint: 'Affiché sur le site pour une fermeture.', control: reason });
-
-  /** Les plages d'ouverture choisies, ou une erreur. [] : fermé toute la journée. */
-  function chosen() {
-    if (mode === 'usual') return { ranges: usual };
-    if (mode === 'closed') return { ranges: [] };
-    if (mode === 'block') {
-      const from = Number(blockFrom.value);
-      const to = Number(blockTo.value);
-      if (to <= from) return { error: "L'heure de réouverture doit suivre l'heure de fermeture." };
-      const ranges = withoutBlock(usual, from, to);
-      if (JSON.stringify(ranges) === JSON.stringify(usual)) return { error: 'Ces heures sont déjà en dehors des horaires du salon.' };
-      return { ranges };
-    }
-    const from = Number(opens.value);
-    const to = Number(closes.value);
-    if (to <= from) return { error: "L'heure de fermeture doit suivre l'heure d'ouverture." };
-    return { ranges: [{ start: from, end: to }] };
+  const rows = [];
+  const plan = h('div', { class: 'day-plan', role: 'group', 'aria-label': 'Planning du jour : touchez une heure pour la fermer ou l\'ouvrir' });
+  for (let minute = first; minute < last; minute += step) {
+    const here = dayBookings.filter(b => b.start < minute + step && minute < b.start + b.duration);
+    const names = here.map(b => (b.start >= minute ? b.name : `${b.name} (suite)`)).join(', ');
+    const stateLabel = h('span', { class: 'day-plan-state' });
+    const row = h('button', { type: 'button', class: 'day-plan-row', dataset: { minute: String(minute) } },
+      h('span', { class: 'day-plan-time' }, shortTime(minute)),
+      stateLabel,
+      h('span', { class: 'day-plan-who' }, names));
+    row.addEventListener('click', () => {
+      if (open.has(minute)) open.delete(minute);
+      else open.add(minute);
+      until.value = '';
+      update();
+    });
+    rows.push({ minute, row, state: stateLabel, usual: isOpenIn(usual, minute), busy: here.length > 0 });
+    plan.append(row);
   }
 
+  const until = h('input', { name: 'until', type: 'date', min: date });
+  const reason = h('input', { name: 'reason', type: 'text', maxlength: '80', placeholder: 'Congés, formation, rendez-vous…', value: saved?.reason || '' });
+  const untilField = field({ id: 'jour-jusqu', label: "Fermé jusqu'au", optional: true, hint: 'Pour des congés : le dernier jour de fermeture.', control: until });
+  const reasonField = field({ id: 'jour-motif', label: 'Motif', optional: true, hint: 'Affiché sur le site pour une fermeture.', control: reason });
+  const summary = h('p', { class: 'day-plan-summary', role: 'status' });
+
+  const shortcut = (label, run) => h('button', { type: 'button', class: 'btn btn--small btn--outline', onclick: () => { run(); update(); } }, h('span', {}, label));
+  const shortcuts = h('div', { class: 'day-plan-shortcuts' },
+    shortcut('Fermé toute la journée', () => open.clear()),
+    usual.length ? shortcut("Horaires d'habitude", () => {
+      open.clear();
+      for (const { minute, usual: wasOpen } of rows) if (wasOpen) open.add(minute);
+      until.value = '';
+    }) : null);
+
   function update() {
-    for (const choice of choices.children) {
-      const selected = choice.dataset.mode === mode;
-      choice.classList.toggle('is-selected', selected);
-      choice.querySelector('input').checked = selected;
-      const extra = choice.querySelector('.choice-extra');
-      if (extra) extra.hidden = !selected;
+    for (const item of rows) {
+      const isOpen = open.has(item.minute);
+      item.row.classList.toggle('is-open', isOpen);
+      item.row.classList.toggle('is-changed', isOpen !== item.usual);
+      item.row.classList.toggle('is-busy', item.busy);
+      item.row.setAttribute('aria-pressed', String(isOpen));
+      item.state.textContent = isOpen ? 'Ouvert' : 'Fermé';
     }
-    reasonField.hidden = mode === 'usual';
+    const chosen = ranges();
+    summary.textContent = !chosen.length ? 'Fermé toute la journée.'
+      : `Ouvert ${rangesLabel(chosen)}${sameAsUsual() ? ", comme d'habitude" : ''}.`;
+    untilField.hidden = chosen.length > 0;
+    reasonField.hidden = sameAsUsual();
     error.hidden = true;
-    const result = chosen();
-    let moved = result.ranges ? outside(date, result.ranges) : 0;
-    if (mode === 'closed' && until.value > date) {
+    let moved = outside(date, chosen);
+    if (!chosen.length && until.value > date) {
       for (let day = addDays(date, 1); day <= until.value; day = addDays(day, 1)) moved += bookingsOn(day).filter(isActive).length;
     }
     warning.hidden = !moved;
     warning.textContent = `${plural(moved, 'rendez-vous déjà pris tombe', 'rendez-vous déjà pris tombent')} pendant les heures fermées : ils restent enregistrés, pensez à prévenir les clients.`;
   }
-
-  for (const option of modes) {
-    const input = h('input', { type: 'radio', name: 'mode', value: option.key });
-    input.addEventListener('change', () => {
-      mode = option.key;
-      update();
-    });
-    choices.append(h('div', { class: 'choice', dataset: { mode: option.key } },
-      h('label', { class: 'choice-label' }, input, h('span', {}, option.label)),
-      option.extra ? h('div', { class: 'choice-extra' }, option.extra) : null));
-  }
-  for (const control of [blockFrom, blockTo, opens, closes, until]) control.addEventListener('change', update);
+  until.addEventListener('change', update);
 
   const submit = h('button', { type: 'submit', class: 'btn' }, h('span', {}, 'Enregistrer'), icon('check'));
-  const form = h('form', { class: 'sheet-form', novalidate: true }, choices, reasonField, warning, error, h('div', { class: 'sheet-actions' }, submit));
+  const form = h('form', { class: 'sheet-form', novalidate: true },
+    h('p', { class: 'field-hint' }, 'Touchez une heure pour la fermer ou l\'ouvrir. Seul ce jour change.'),
+    shortcuts, plan, summary, untilField, reasonField, warning, error, h('div', { class: 'sheet-actions' }, submit));
 
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    const result = chosen();
-    if (result.error) {
-      error.textContent = result.error;
+    const chosen = ranges();
+    if (chosen.length > 8) {
+      error.textContent = 'Au plus 8 plages ouvertes dans une journée.';
       error.hidden = false;
       return;
     }
@@ -1205,18 +1215,18 @@ function openDayHours(date) {
     try {
       let closures;
       let message;
-      if (mode === 'usual') {
+      if (sameAsUsual()) {
         if (saved) ({ closures } = await call(`/api/salon/closures/${date}`, { method: 'DELETE' }));
         if (holiday && !holiday.open && usual.length) ({ holidays: state.holidays } = await call('/api/salon/holidays', { method: 'PUT', body: { date, open: true } }));
         message = usual.length ? `Horaires habituels le ${formatLong(date)}.` : `Le ${formatLong(date)} reste fermé, comme d'habitude.`;
-      } else if (!result.ranges.length) {
+      } else if (!chosen.length) {
         const period = { from: date, to: until.value > date ? until.value : date };
         ({ closures } = await call('/api/salon/closures', { method: 'POST', body: { date, until: period.to, reason: reason.value } }));
         message = `Le salon sera fermé ${periodLabel(period)}. C'est annoncé sur le site.`;
       } else {
-        const hours = result.ranges.map(range => ({ start: fromMinutes(range.start), end: fromMinutes(range.end) }));
+        const hours = chosen.map(range => ({ start: fromMinutes(range.start), end: fromMinutes(range.end) }));
         ({ closures } = await call('/api/salon/closures', { method: 'POST', body: { date, reason: reason.value, hours } }));
-        message = `Le ${formatLong(date)}, le salon sera ${specialLabel(date, result.ranges)}.`;
+        message = `Le ${formatLong(date)}, le salon sera ${specialLabel(date, chosen)}.`;
       }
       if (closures) state.closures = closures;
       sheet.dialog.close();
@@ -1231,7 +1241,9 @@ function openDayHours(date) {
 
   sheet.body.replaceChildren(form);
   update();
-  choices.querySelector('input:checked')?.focus();
+  // Le planning s'ouvre sur la première heure ouverte (ou le début de la journée habituelle).
+  const anchor = rows.find(item => open.has(item.minute)) || rows.find(item => item.usual) || rows[0];
+  anchor?.row.focus();
 }
 
 // ── Vue « Fréquentation » ─────────────────────────────────────────────────
