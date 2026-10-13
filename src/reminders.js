@@ -120,10 +120,12 @@ function createReminders({ config, store, clock, send = sendPush }) {
       let result;
       try {
         result = await send(reminder, { ...NEWS[kind](booking), url: pageOf(booking), tag: `rendez-vous-${booking.id}` }, { keys: identity, subject, ttl: 24 * 3600 });
-      } catch {
-        result = { ok: false };
+      } catch (err) {
+        result = { ok: false, status: err.message };
       }
       if (result.ok) sent += 1;
+      // Visible dans le journal (tableau de bord de Cloudflare) : pourquoi un envoi n'est pas parti.
+      else console.error(`[notifications] envoi refusé (${result.status}) vers ${new URL(reminder.endpoint).host}`);
       if (result.gone) store.reminders.removeWhere(r => r === reminder);
     }
     return sent;
@@ -147,10 +149,12 @@ function createReminders({ config, store, clock, send = sendPush }) {
       let result;
       try {
         result = await send(reminder, message(booking, now), { keys: identity, subject, ttl: Math.min(remaining, 720) * 60 });
-      } catch {
-        result = { ok: false };
+      } catch (err) {
+        result = { ok: false, status: err.message };
       }
       if (result.ok) sent += 1;
+      // Visible dans le journal (tableau de bord de Cloudflare) : pourquoi un envoi n'est pas parti.
+      else console.error(`[rappels] envoi refusé (${result.status}) vers ${new URL(reminder.endpoint).host}`);
       const failures = result.ok ? 0 : (reminder.failures || 0) + 1;
       // Envoi impossible pour l'instant : on réessaie à la minute suivante, cinq fois au plus.
       if (!result.ok && !result.gone && failures < 5) {
@@ -192,10 +196,12 @@ function createReminders({ config, store, clock, send = sendPush }) {
       let result;
       try {
         result = await send(device, { url: 'salon', ...news }, { keys: identity, subject, ttl: 12 * 3600 });
-      } catch {
-        result = { ok: false };
+      } catch (err) {
+        result = { ok: false, status: err.message };
       }
       if (result.ok) sent += 1;
+      // Visible dans le journal (tableau de bord de Cloudflare) : pourquoi un envoi n'est pas parti.
+      else console.error(`[alertes] envoi refusé (${result.status}) vers ${new URL(device.endpoint).host}`);
       if (result.gone) store.salonDevices.remove(device.endpoint);
     }
     return sent;
@@ -212,6 +218,7 @@ function createReminders({ config, store, clock, send = sendPush }) {
   return {
     publicKey: identity.publicKey,
     alertSalon, addSalonDevice,
+    salonDevices: () => store.salonDevices.all().length,
     removeSalonDevice: endpoint => store.salonDevices.remove(String(endpoint || '')),
     leads,
     labels: leads.map(leadLabel),

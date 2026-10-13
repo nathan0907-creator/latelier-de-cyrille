@@ -237,6 +237,11 @@ test("alertes de la coiffeuse : nouvelle demande et annulation, sur son téléph
   assert.equal((await site.call('POST', '/api/salon/push', { subscription: subscription('cyrille') })).status, 201);
   assert.equal((await site.call('POST', '/api/salon/push', { subscription: { endpoint: 'https://ailleurs.example/x' } })).status, 400);
 
+  // L'alerte d'essai de la cloche.
+  assert.equal((await site.request('POST', '/api/salon/push/test', { body: {} })).status, 401);
+  assert.deepEqual((await site.call('POST', '/api/salon/push/test', {})).json, { devices: 1, sent: 1 });
+  assert.equal(site.sent.pop().title, "Alerte d'essai");
+
   const { ref } = (await site.request('POST', '/api/bookings', { body: booking() })).json.reminder;
   await site.settle();
   assert.deepEqual(site.sent.map(s => [s.endpoint.split('/').pop(), s.title, s.url]), [['cyrille', 'Nouvelle demande de rendez-vous', 'salon']]);

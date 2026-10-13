@@ -45,10 +45,14 @@ function createApp({
   const tell = (booking, kind) => {
     reminders.notify(booking, kind).catch(err => console.error('[notifications]', err));
   };
-  /** Alerte sur le téléphone de la coiffeuse, même quand son espace est fermé. */
-  const alertSalon = news => {
-    reminders.alertSalon(news).catch(err => console.error('[alertes]', err));
-  };
+  /**
+   * Alerte sur le téléphone de la coiffeuse, même quand son espace est fermé. Attendue avant de
+   * répondre : sur Cloudflare, un envoi laissé en route peut être coupé une fois la réponse partie.
+   */
+  const alertSalon = news => reminders.alertSalon(news).catch(err => {
+    console.error('[alertes]', err);
+    return 0;
+  });
   const whenOf = booking => `${formatShort(booking.date)} à ${frTime(booking.start)}`;
   const auth = createAuth({ store, setupCode });
   const events = createEvents(live);
@@ -167,7 +171,7 @@ function createApp({
       const result = bookings.create(body, { mode: 'public' });
       if (!result.ok) return reject(result);
       announce('created', result.booking);
-      alertSalon({ title: 'Nouvelle demande de rendez-vous', body: `${result.booking.name} · ${result.booking.serviceName} · ${whenOf(result.booking)}`, tag: `demande-${result.booking.id}` });
+      await alertSalon({ title: 'Nouvelle demande de rendez-vous', body: `${result.booking.name} · ${result.booking.serviceName} · ${whenOf(result.booking)}`, tag: `demande-${result.booking.id}` });
       stats.booking();
       // « reminder » : la référence qui permet à ce client, et à lui seul, de demander un rappel.
       return json(201, { booking: bookings.publicView(result.booking), reminder: reminders.refFor(result.booking) });
@@ -184,7 +188,7 @@ function createApp({
       if (!result.ok) return reject(result);
       reminders.forget(result.booking.id);
       announce('updated', result.booking);
-      alertSalon({
+      await alertSalon({
         title: 'Rendez-vous annulé par le client',
         body: `${result.booking.name} · ${whenOf(result.booking)} · Raison : ${result.booking.cancelReason}`,
         tag: `annulation-${result.booking.id}`,
@@ -274,6 +278,13 @@ function createApp({
     if (route === 'GET /api/salon/events') return events.open('salon', req, res, { ip, sessionId: session.id });
 
     // Les alertes sur l'appareil de la coiffeuse (cloche de l'espace salon).
+    // Alerte d'essai : la coiffeuse vérifie que ses appareils la reçoivent.
+    if (route === 'POST /api/salon/push/test') {
+      const devices = reminders.salonDevices();
+      const sent = await alertSalon({ title: "Alerte d'essai", body: 'Les alertes du salon arrivent bien sur cet appareil.', tag: 'essai' });
+      return json(200, { devices, sent });
+    }
+
     if (route === 'POST /api/salon/push' || route === 'DELETE /api/salon/push') {
       const body = await readJson(req);
       if (method === 'DELETE') {

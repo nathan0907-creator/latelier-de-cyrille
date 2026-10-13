@@ -147,30 +147,52 @@ async function toggleAlerts() {
   refs.bell.setAttribute('aria-pressed', String(state.alerts));
   if (!state.alerts) {
     await phoneAlerts(false);
-    toast('Alertes désactivées.');
+    toast('Appuyez de nouveau sur la cloche pour les remettre.', { title: 'Alertes désactivées' });
     return;
   }
   chime();
-  let system = false;
-  if ('Notification' in window) {
-    if (Notification.permission === 'default') await Notification.requestPermission().catch(() => {});
-    system = Notification.permission === 'granted';
+  if ('Notification' in window && Notification.permission === 'default') await Notification.requestPermission().catch(() => {});
+  const phone = await phoneAlerts(true);
+  if (phone === true) {
+    toast('Une alerte sur cet appareil à chaque nouvelle demande et à chaque annulation, même la page fermée.', {
+      title: 'Alertes activées', action: { label: "Envoyer une alerte d'essai", run: testAlert }, duration: 12000,
+    });
+  } else {
+    toast(`${phone} En attendant : un son à chaque nouveau rendez-vous, tant que cette page reste ouverte.`, {
+      title: 'Pas d\'alerte sur le téléphone', type: 'error', duration: 15000,
+    });
   }
-  const phone = system && await phoneAlerts(true);
-  toast(phone
-    ? 'Une alerte sur cet appareil à chaque nouvelle demande et à chaque annulation, même la page fermée.'
-    : system ? 'Un son et une notification à chaque nouveau rendez-vous.'
-      : 'Un son à chaque nouveau rendez-vous, tant que cette page reste ouverte.', { title: 'Alertes activées' });
+}
+
+/** Envoie une alerte d'essai à tous les appareils abonnés. */
+async function testAlert() {
+  try {
+    const { devices, sent } = await call('/api/salon/push/test', { method: 'POST', body: {} });
+    toast(!devices ? "Aucun appareil n'est abonné : appuyez sur la cloche." : sent
+      ? `Envoyée à ${sent} appareil${sent > 1 ? 's' : ''}. Elle doit s'afficher dans quelques secondes.`
+      : "Le service de notifications l'a refusée : appuyez deux fois sur la cloche pour vous réabonner.",
+    { title: "Alerte d'essai", type: sent ? '' : 'error' });
+  } catch (err) {
+    toast(err.message, { type: 'error' });
+  }
 }
 
 const fromBase64Url = text => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), char => char.charCodeAt(0));
 
+const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
 /**
  * Les alertes « push » de cet appareil : nouvelle demande, annulation par un client (avec sa raison),
- * même quand l'espace salon est fermé. Renvoie true si l'appareil est abonné.
+ * même quand l'espace salon est fermé. Renvoie true si l'appareil est abonné, sinon la raison.
  */
 async function phoneAlerts(on) {
-  if (!config.push?.key || !('serviceWorker' in navigator) || !('PushManager' in window)) return false;
+  if (!config.push?.key) return "Le site n'est pas prêt pour les alertes.";
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    return isIos() && !isInstalled()
+      ? "Sur iPhone, ouvrez le site dans Safari, touchez Partager puis « Sur l'écran d'accueil », et ouvrez l'espace salon depuis cette icône."
+      : 'Ce navigateur ne reçoit pas les alertes : essayez Chrome, ou Safari sur iPhone.';
+  }
   try {
     const registration = await navigator.serviceWorker.register(config.push.worker);
     await navigator.serviceWorker.ready;
@@ -179,12 +201,22 @@ async function phoneAlerts(on) {
       if (subscription) await call('/api/salon/push', { method: 'DELETE', body: { endpoint: subscription.endpoint } });
       return false;
     }
+    if (Notification.permission !== 'granted') {
+      return Notification.permission === 'denied'
+        ? 'Les notifications sont bloquées pour ce site : autorisez-les dans les réglages du téléphone (Notifications), puis appuyez deux fois sur la cloche.'
+        : 'Les notifications n\'ont pas été autorisées : appuyez deux fois sur la cloche et choisissez « Autoriser ».';
+    }
     subscription ||= await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: fromBase64Url(config.push.key) });
     await call('/api/salon/push', { method: 'POST', body: { subscription: subscription.toJSON() } });
     return true;
-  } catch {
-    return false;
+  } catch (err) {
+    return `L'abonnement a échoué (${err.message || err.name}).`;
   }
+}
+
+/** En ouvrant l'espace salon, cloche allumée : l'appareil se réabonne sans rien demander. */
+function renewPhoneAlerts() {
+  if (state.alerts && 'Notification' in window && Notification.permission === 'granted') phoneAlerts(true);
 }
 
 function announce(booking) {
@@ -428,6 +460,7 @@ async function enter() {
   await loadData();
   mountDashboard();
   connect();
+  renewPhoneAlerts();
 }
 
 // ── Tableau de bord ───────────────────────────────────────────────────────
