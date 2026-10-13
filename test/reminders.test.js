@@ -149,7 +149,7 @@ test('rappels : la veille et 2 h avant, une seule fois chacun', async () => {
 
   salon.now.minutes = 14 * 60 + 30;
   assert.equal(await salon.reminders.tick(), 1, 'lundi 14h30 : la veille');
-  assert.equal(salon.sent[0].message.title, 'Rendez-vous demain à 14h30');
+  assert.equal(salon.sent[0].message.title, "N'oubliez pas votre rendez-vous demain à 14h30");
   assert.match(salon.sent[0].message.body, /^Court · Salon de test, 1 rue du Test, Paris\. Vous venez \? Confirmez, ou annulez si vous avez un empêchement\.$/);
   assert.equal(salon.sent[0].message.ref, ref, 'les boutons « Je viens » et « Annuler » agissent sur ce rendez-vous');
   assert.equal(salon.sent[0].message.actions, true);

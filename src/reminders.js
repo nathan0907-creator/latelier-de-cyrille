@@ -90,7 +90,8 @@ function createReminders({ config, store, clock, send = sendPush }) {
     const day = offset === 0 ? "aujourd'hui" : offset === 1 ? 'demain' : formatLong(booking.date);
     const place = [config.name, config.address.street, config.address.city].filter(Boolean).join(', ');
     return {
-      title: `Rendez-vous ${day} à ${frTime(booking.start)}`,
+      // La veille : « N'oubliez pas votre rendez-vous demain à 14h30 ».
+      title: offset === 1 ? `N'oubliez pas votre rendez-vous demain à ${frTime(booking.start)}` : `Rendez-vous ${day} à ${frTime(booking.start)}`,
       body: `${booking.serviceName} · ${place}. Vous venez ? Confirmez, ou annulez si vous avez un empêchement.`,
       url: pageOf(booking),
       tag: `rendez-vous-${booking.id}`,
