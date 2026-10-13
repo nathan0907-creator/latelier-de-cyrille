@@ -35,10 +35,6 @@
   //   { "pattern": "latelier-de-cyrille.fr", "custom_domain": true }
   // ],
 
-  // L'adresse d'expédition des e-mails aux clients (validée dans Brevo). La clé Brevo, elle, est un
-  // secret (BREVO_API_KEY), à mettre dans les réglages du Worker : voir « Les e-mails » dans le README.
-  "vars": { "MAIL_FROM": "rendez-vous@latelierdecyrille.com" },
-
   // Journal des erreurs, visible dans le tableau de bord de Cloudflare.
   "observability": { "enabled": true },
 
@@ -46,7 +42,7 @@
   // On y teste tout sans toucher au vrai site (voir « Un site d'essai » dans le README).
   "env": {
     "essai": {
-      "vars": { "ESSAI": "1", "MAIL_FROM": "rendez-vous@latelierdecyrille.com" },
+      "vars": { "ESSAI": "1" },
       "durable_objects": {
         "bindings": [{ "name": "SALON", "class_name": "Salon" }]
       }

@@ -222,7 +222,7 @@ Avec une adresse e-mail laissée en réservant (case « E-mail (conseillé) »),
 1. Créer un compte sur https://www.brevo.com (offre gratuite).
 2. **Expéditeurs, domaines** : ajouter l'adresse d'expédition et la valider. L'idéal : une adresse du nom de domaine du salon (par exemple `rendez-vous@latelier-de-cyrille.fr`), et dans Brevo « Authentifier le domaine » (Brevo donne les lignes à ajouter dans le DNS de Cloudflare) : les e-mails n'arrivent alors pas dans les indésirables.
 3. **SMTP et API** → **Clés API** → créer une clé.
-4. Dans le Worker sur Cloudflare : **Settings** → **Variables and Secrets** : un secret `BREVO_API_KEY` (la clé). L'adresse d'expédition est `MAIL_FROM`, dans `wrangler.jsonc` (à changer là si besoin). Sur l'ordinateur du salon, les mêmes noms en variables d'environnement.
+4. Dans le Worker sur Cloudflare : **Settings** → **Variables and Secrets** : un secret `BREVO_API_KEY` (la clé), et un secret `MAIL_FROM` (l'adresse d'expédition validée). Sur l'ordinateur du salon, les mêmes noms en variables d'environnement.
 
 Les réponses des clients vont à l'adresse e-mail du salon, si elle est renseignée dans `salon.config.js` (`contact.email`).
 
