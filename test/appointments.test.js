@@ -153,7 +153,7 @@ test('annulation par le client : le créneau se libère, le salon est prévenu e
   assert.equal((await site.request('POST', '/api/bookings/cancel', { body: { ref, reason: 'Encore' } })).status, 409, 'déjà annulé');
 
   const page = (await site.request('GET', `/rendez-vous?r=${ref}`)).text;
-  assert.match(page, /Rendez-vous annulé/);
+  assert.match(page, /Vous avez annulé ce rendez-vous/);
   assert.doesNotMatch(page, /data-cancel-ask/);
 
   // La coiffeuse le rétablit (le client a rappelé) : il n'est plus « annulé par le client ».
@@ -226,6 +226,11 @@ test('notifications : le client est prévenu quand le salon confirme, déplace o
   assert.deepEqual(site.sent.map(message => message.title), ['Rendez-vous annulé', 'Rendez-vous annulé']);
   assert.match(site.sent[0].body, /^Le salon a dû annuler votre rendez-vous du jeudi 15 octobre à 11h\. Pour en reprendre un : 01 99 00 00 00$/);
   assert.equal((await site.call('GET', '/api/salon/data')).json.bookings[0].cancelledBy, 'salon');
+  // Sur l'appareil du client : sa page et la liste de ses rendez-vous le disent.
+  const page = await site.request('GET', `/rendez-vous?r=${encodeURIComponent(ref)}`);
+  assert.match(page.text, /Annulé par le salon/);
+  const mine = await site.request('POST', '/api/bookings/mine', { body: { refs: [ref, 'faux.faux'] } });
+  assert.deepEqual(mine.json.bookings.map(entry => [entry.booking?.status, entry.booking?.cancelledBy]), [['cancelled', 'salon'], [undefined, undefined]]);
   await site.app.reminders.tick();
   assert.equal(site.store.reminders.all().length, 0);
 });
@@ -294,6 +299,13 @@ test('la coiffeuse rallonge, raccourcit, déplace en validant, et superpose si e
   assert.equal((await patch(zoe.id, { date: TUESDAY, time: '10:00' })).status, 409);
   assert.equal((await patch(zoe.id, { date: TUESDAY, time: '10:00', force: true })).json.booking.time, '10:00');
   assert.equal((await patch(zoe.id, { date: TUESDAY, time: '22:00', force: true })).json.code, 'slot_unavailable', 'jamais salon fermé');
+
+  // Un nouveau rendez-vous saisi au salon sur une heure prise : seulement en le superposant.
+  const walkIn = { serviceId: 'court', date: TUESDAY, time: '10:00', name: 'Inès Petit' };
+  assert.equal((await site.call('POST', '/api/salon/bookings', walkIn)).json.code, 'slot_taken');
+  const forced = await site.call('POST', '/api/salon/bookings', { ...walkIn, force: true });
+  assert.equal(forced.status, 201, JSON.stringify(forced.json));
+  assert.equal((await site.request('POST', '/api/bookings', { body: booking({ time: '10:00', phone: '0622222222', force: true }) })).status, 409, 'jamais en ligne');
 
   // Léa, annulée puis rétablie alors que Zoé a pris sa place : seulement si on les superpose.
   await patch(lea.id, { status: 'cancelled' });

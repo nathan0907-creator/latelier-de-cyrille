@@ -1,9 +1,37 @@
-// Page « Votre rendez-vous » : le bouton d'annulation. Le reste de la page vient du serveur.
+// Page « Votre rendez-vous » : le bouton d'annulation, et la page tenue à jour si le salon confirme,
+// déplace ou annule le rendez-vous pendant qu'elle est ouverte. Le reste de la page vient du serveur.
 
 import { api, readPageData } from './lib.js';
 
 const root = document.querySelector('[data-cancel]');
-const { ref } = readPageData();
+const { ref, state } = readPageData();
+const MINE_KEY = 'mes-rendez-vous';
+
+/** La page de réservation n'a plus à proposer ce rendez-vous sur cet appareil. */
+function forget() {
+  try {
+    const kept = JSON.parse(localStorage.getItem(MINE_KEY) || '[]').filter(item => item.ref !== ref);
+    localStorage.setItem(MINE_KEY, JSON.stringify(kept));
+  } catch {
+    // Stockage indisponible : rien à nettoyer.
+  }
+}
+
+if (ref && state?.startsWith('cancelled')) forget();
+
+/** Le rendez-vous a changé côté salon : la page rechargée le montre. */
+async function check() {
+  if (!ref || document.hidden || state?.startsWith('cancelled')) return;
+  try {
+    const { bookings: [found] } = await api('/api/bookings/mine', { method: 'POST', body: { refs: [ref] } });
+    const now = found?.booking ? `${found.booking.status} ${found.booking.date} ${found.booking.time}` : '';
+    if (now !== state) location.reload();
+  } catch {
+    // Hors ligne : on réessaiera.
+  }
+}
+document.addEventListener('visibilitychange', check);
+setInterval(check, 2 * 60_000);
 
 if (root && ref) {
   const ask = root.querySelector('[data-cancel-ask]');
@@ -43,13 +71,7 @@ if (root && ref) {
         return;
       }
     }
-    // La page de réservation n'a plus à le proposer sur cet appareil.
-    try {
-      const kept = JSON.parse(localStorage.getItem('mes-rendez-vous') || '[]').filter(item => item.ref !== ref);
-      localStorage.setItem('mes-rendez-vous', JSON.stringify(kept));
-    } catch {
-      // Stockage indisponible : rien à nettoyer.
-    }
+    forget();
     location.reload();
   });
 }

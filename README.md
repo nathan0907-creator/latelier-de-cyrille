@@ -215,6 +215,18 @@ Dans le Worker : **Settings** → **Variables and Secrets** → **Add** : type *
 3. Dans `salon.config.js`, renseigner `siteUrl` (par exemple `https://www.latelier-de-cyrille.fr`) et compléter les mentions légales (forme juridique, SIRET ; l'hébergeur, Cloudflare, est déjà indiqué).
 4. Envoyer ces modifications sur `main` : Cloudflare republie le site sur le nom de domaine, avec son certificat HTTPS. Toute visite en `http://` ou sans `www.` est renvoyée vers `siteUrl`.
 
+### 5. Un site d'essai
+
+Un second site, `latelier-de-cyrille-essai`, pour tout essayer (réserver, annuler, valider, recevoir les alertes) sans toucher au vrai : ses rendez-vous, son compte et ses alertes sont à part. Son nom porte « (site d'essai) » et il n'apparaît pas sur Google.
+
+1. Dans Cloudflare, **Workers & Pages** → **Create** → **Import a repository** : choisir ce dépôt.
+2. Nom du projet : **`latelier-de-cyrille-essai`** (exactement celui-là).
+3. **Build settings** → **Deploy command** : `npx wrangler deploy --env essai`. Puis **Create and deploy**.
+4. Dans ce nouveau Worker : **Settings** → **Variables and Secrets** → secret `SETUP_CODE`, avec un code différent de celui du vrai site.
+5. L'adresse du site d'essai est en haut de la page du Worker : `https://latelier-de-cyrille-essai.….workers.dev`. Ouvrir `/salon` et y créer un compte d'essai.
+
+Il suit `main`, comme le vrai site. Pour essayer une modification avant de l'accepter : **Settings** → **Build** → **Branch control**, et choisir la branche de la demande de fusion.
+
 Le site tourne aussi sur Cloudflare sans être publié, pour essayer une modification : `npx wrangler dev`, puis http://localhost:8787 (le code de configuration se met alors dans un fichier `.dev.vars` : `SETUP_CODE=…`).
 
 ### Sur un serveur à soi

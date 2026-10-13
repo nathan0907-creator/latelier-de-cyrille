@@ -26,7 +26,8 @@ export class Salon extends DurableObject {
     super(ctx, env);
     const store = createStore(sqlBackend(ctx.storage.sql, run => ctx.storage.transactionSync(run)));
     this.app = createApp({
-      config: site.config,
+      // Le site d'essai (wrangler.jsonc, « essai ») porte son nom dans chaque titre de page.
+      config: env.ESSAI ? { ...site.config, name: `${site.config.name} (site d'essai)` } : site.config,
       store,
       // Le code de première connexion : le secret SETUP_CODE, choisi dans les réglages du Worker.
       setupCode: env.SETUP_CODE || '',
@@ -76,16 +77,29 @@ function withHeaders(response, type, url) {
   return new Response(response.body, { status: response.status, headers });
 }
 
+/** Le site d'essai n'apparaît jamais dans les moteurs de recherche. */
+function hidden(response, env) {
+  if (!env.ESSAI) return response;
+  const copy = new Response(response.body, response);
+  copy.headers.set('X-Robots-Tag', 'noindex, nofollow');
+  return copy;
+}
+
+/** Un fichier de public/ est servi directement ; tout le reste va au salon. */
+async function serve(request, env) {
+  const url = new URL(request.url);
+  const extension = /\.[a-z0-9]+$/i.exec(url.pathname)?.[0].toLowerCase();
+  const type = extension && TYPES[extension];
+  if (type && !url.pathname.startsWith('/api/')) {
+    const response = await env.ASSETS.fetch(request);
+    if (response.status !== 404) return withHeaders(response, type, url);
+  }
+  // Toutes les visites vont au même salon, créé en Europe de l'Ouest, au plus près de ses clientes.
+  return env.SALON.get(env.SALON.idFromName('salon'), { locationHint: 'weur' }).fetch(request);
+}
+
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
-    const extension = /\.[a-z0-9]+$/i.exec(url.pathname)?.[0].toLowerCase();
-    const type = extension && TYPES[extension];
-    if (type && !url.pathname.startsWith('/api/')) {
-      const response = await env.ASSETS.fetch(request);
-      if (response.status !== 404) return withHeaders(response, type, url);
-    }
-    // Toutes les visites vont au même salon, créé en Europe de l'Ouest, au plus près de ses clientes.
-    return env.SALON.get(env.SALON.idFromName('salon'), { locationHint: 'weur' }).fetch(request);
+    return hidden(await serve(request, env), env);
   },
 };

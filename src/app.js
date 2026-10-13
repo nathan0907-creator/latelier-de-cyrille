@@ -64,6 +64,8 @@ function createApp({
     // Toutes adresses confondues : un agenda ne se remplit pas de quarante demandes en une heure.
     bookingGlobal: createLimiter({ max: 40, windowMs: 60 * 60_000 }),
     reminder: createLimiter({ max: 20, windowMs: 10 * 60_000 }),
+    // Les pages du client relisent ses rendez-vous en s'ouvrant et en revenant au premier plan.
+    mine: createLimiter({ max: 60, windowMs: 10 * 60_000 }),
     login: createLimiter({ max: 5, windowMs: 15 * 60_000 }),
     loginGlobal: createLimiter({ max: 40, windowMs: 15 * 60_000 }),
   };
@@ -206,6 +208,18 @@ function createApp({
       if (!result.ok) return reject(result);
       announce('updated', result.booking);
       return json(200, { booking: bookings.publicView(result.booking) });
+    }
+
+    // Les rendez-vous gardés sur l'appareil du client : où en sont-ils (confirmé, déplacé, annulé
+    // par le salon) ? Un rendez-vous effacé revient sans « booking ».
+    if (route === 'POST /api/bookings/mine') {
+      const limit = limits.mine.take(ip);
+      if (!limit.ok) return tooMany(limit, 'Trop de demandes. Réessayez dans quelques minutes.');
+      const refs = [].concat((await readJson(req)).refs || []).slice(0, 5).map(String);
+      return json(200, { bookings: refs.map(ref => {
+        const found = reminders.find(ref);
+        return found ? { ref, booking: bookings.publicView(found) } : { ref };
+      }) });
     }
 
     // Rappel par notification : le client qui vient de réserver l'active (ou le retire) sur son appareil.

@@ -48,6 +48,32 @@ const bookingsOn = date => state.bookings.filter(b => b.date === date).sort(byTi
 const telHref = phone => `tel:${phone.replace(/[^\d+]/g, '')}`;
 const hoursLabel = booking => `${frTime(booking.start)} – ${frTime(booking.start + booking.duration)}`;
 const whenLabel = booking => `${capitalize(formatLong(booking.date))} à ${frTime(booking.start)}`;
+/** « Les deux rendez-vous auront lieu en même temps, avec Léa Dupont (10h00 – 10h30). » */
+function overlapNote(date, time, duration, exceptId = '') {
+  const start = toMinutes(time);
+  const others = state.bookings.filter(b => b.id !== exceptId && isActive(b) && b.date === date
+    && b.start < start + duration && start < b.start + b.duration);
+  return `Les deux rendez-vous auront lieu en même temps${others.length ? `, avec ${others.map(b => `${b.name} (${hoursLabel(b)})`).join(', ')}` : ''}.`;
+}
+
+/** Les heures libres d'abord, puis celles où il faudrait superposer deux rendez-vous. */
+function slotOptions(choices, wanted = '') {
+  const options = list => list.map(s => h('option', { value: s.time, selected: s.time === wanted }, frTime(s.time)));
+  const free = choices.filter(s => s.available);
+  const busy = choices.filter(s => !s.available);
+  return [
+    free.length && h('optgroup', { label: 'Heures libres' }, ...options(free)),
+    busy.length && h('optgroup', { label: 'Superposer à un autre rendez-vous' }, ...options(busy)),
+  ].filter(Boolean);
+}
+
+/** Un SMS prêt à envoyer au client dont le salon annule le rendez-vous (sms:…?&body= : iPhone et Android). */
+const cancelSms = booking => {
+  const firstName = booking.name.split(' ')[0];
+  const text = `Bonjour ${firstName}, désolée, je dois annuler votre rendez-vous du ${formatLong(booking.date)} à ${frTime(booking.start)}. `
+    + `Vous pouvez en reprendre un sur ${location.origin}/reservation. ${config.owner || config.name}`;
+  return `sms:${booking.phone.replace(/[^\d+]/g, '')}?&body=${encodeURIComponent(text)}`;
+};
 const plural = (count, one, many) => `${count} ${count > 1 ? many : one}`;
 
 /** La fermeture d'un jour : saisie par la coiffeuse (congés…), ou jour férié fermé d'office. */
@@ -1372,12 +1398,7 @@ function renderDetail({ focus = false } = {}) {
       const overlapping = taken.has(slot.value);
       label.textContent = overlapping ? (confirming ? 'Confirmer en superposant' : 'Superposer ici')
         : confirming ? 'Confirmer à cette heure' : 'Déplacer ici';
-      const start = toMinutes(slot.value);
-      const others = overlapping ? state.bookings.filter(b => b.id !== booking.id && isActive(b) && b.date === day.value
-        && b.start < start + booking.duration && start < b.start + b.duration) : [];
-      note.textContent = overlapping
-        ? `Les deux rendez-vous auront lieu en même temps${others.length ? `, avec ${others.map(b => `${b.name} (${hoursLabel(b)})`).join(', ')}` : ''}.`
-        : '';
+      note.textContent = overlapping ? overlapNote(day.value, slot.value, booking.duration, booking.id) : '';
     };
     slot.addEventListener('change', describe);
     go.disabled = true;
@@ -1399,14 +1420,7 @@ function renderDetail({ focus = false } = {}) {
           slot.replaceChildren(h('option', { value: '' }, result.closed ? 'Salon fermé ce jour-là' : 'Aucune heure possible'));
           return;
         }
-        // Les heures libres d'abord, puis celles où il faudrait superposer deux rendez-vous.
-        const free = choices.filter(s => s.available);
-        const busy = choices.filter(s => !s.available);
-        const options = list => list.map(s => h('option', { value: s.time }, frTime(s.time)));
-        slot.replaceChildren(...[
-          free.length && h('optgroup', { label: 'Heures libres' }, ...options(free)),
-          busy.length && h('optgroup', { label: 'Superposer à un autre rendez-vous' }, ...options(busy)),
-        ].filter(Boolean));
+        slot.replaceChildren(...slotOptions(choices));
         go.disabled = false;
         describe();
       } catch (err) {
@@ -1459,7 +1473,7 @@ function renderDetail({ focus = false } = {}) {
     ];
   } else if (detail.asking === 'cancel') {
     actions = [
-      h('p', { class: 'sheet-question' }, 'Annuler ce rendez-vous ? Le créneau sera de nouveau proposé en ligne.'),
+      h('p', { class: 'sheet-question' }, "Annuler ce rendez-vous ? Le client est prévenu par notification s'il les a acceptées, et sur sa page de rendez-vous. Le créneau sera de nouveau proposé en ligne."),
       button('Oui, annuler', 'btn--danger', () => setStatus('cancelled')),
       button('Non, le garder', 'btn--outline', () => ask(null)),
     ];
@@ -1474,6 +1488,10 @@ function renderDetail({ focus = false } = {}) {
     ];
   } else if (booking.status === 'cancelled') {
     actions = [
+      // Le client sans notifications ne sait pas que le salon a annulé : un SMS tout prêt.
+      booking.cancelledBy !== 'client' && booking.phone && booking.date >= state.today
+        ? h('a', { class: 'btn btn--small', href: cancelSms(booking) }, h('span', {}, 'Prévenir par SMS'), icon('phone'))
+        : null,
       button('Rétablir', '', () => setStatus('confirmed'), 'check'),
       button('Supprimer', 'btn--danger', () => ask('delete'), 'trash'),
     ];
@@ -1537,7 +1555,17 @@ function openNewBooking({ date = '', time = '', name: knownName = '', phone: kno
   name.value = knownName;
   phone.value = knownPhone;
   const note = h('input', { name: 'note', type: 'text', maxlength: '200', autocomplete: 'off' });
-  const submit = h('button', { type: 'submit', class: 'btn', disabled: true }, h('span', {}, 'Enregistrer'), icon('check'));
+  const submitLabel = h('span', {}, 'Enregistrer');
+  const submit = h('button', { type: 'submit', class: 'btn', disabled: true }, submitLabel, icon('check'));
+  // Une heure déjà prise reste proposée : la coiffeuse peut prendre deux clientes à la fois.
+  let taken = new Set();
+  const overlap = h('p', { class: 'field-hint' });
+  const durationOf = () => config.services.find(s => s.id === service.value)?.duration || 0;
+  const describe = () => {
+    const overlapping = taken.has(slot.value);
+    submitLabel.textContent = overlapping ? 'Enregistrer en superposant' : 'Enregistrer';
+    overlap.textContent = overlapping ? overlapNote(day.value, slot.value, durationOf()) : '';
+  };
 
   const fail = message => {
     error.textContent = message;
@@ -1549,6 +1577,8 @@ function openNewBooking({ date = '', time = '', name: knownName = '', phone: kno
   async function loadTimes() {
     const current = ++request;
     submit.disabled = true;
+    taken = new Set();
+    describe();
     if (!day.value) {
       slot.replaceChildren(h('option', { value: '' }, 'Choisissez une date'));
       return;
@@ -1557,18 +1587,25 @@ function openNewBooking({ date = '', time = '', name: knownName = '', phone: kno
     try {
       const result = await call(`/api/availability?service=${service.value}&date=${day.value}&salon=1`);
       if (current !== request) return;
-      const free = result.slots.filter(s => s.available);
-      if (!free.length) {
-        slot.replaceChildren(h('option', { value: '' }, result.closed ? 'Salon fermé ce jour-là' : 'Aucun créneau libre'));
+      if (!result.slots.length) {
+        slot.replaceChildren(h('option', { value: '' }, result.closed ? 'Salon fermé ce jour-là' : 'Aucune heure possible'));
         return;
       }
-      slot.replaceChildren(...free.map(s => h('option', { value: s.time, selected: s.time === wanted }, frTime(s.time))));
+      taken = new Set(result.slots.filter(s => !s.available).map(s => s.time));
+      // L'heure choisie dans l'agenda d'abord, sinon la première heure libre.
+      const first = result.slots.find(s => s.time === wanted) || result.slots.find(s => s.available) || result.slots[0];
+      slot.replaceChildren(...slotOptions(result.slots, first.time));
+      slot.value = first.time;
       submit.disabled = false;
+      describe();
     } catch (err) {
       if (current === request) fail(err.message);
     }
   }
-  slot.addEventListener('change', () => { wanted = slot.value; });
+  slot.addEventListener('change', () => {
+    wanted = slot.value;
+    describe();
+  });
   service.addEventListener('change', loadTimes);
   day.addEventListener('change', loadTimes);
 
@@ -1577,6 +1614,7 @@ function openNewBooking({ date = '', time = '', name: knownName = '', phone: kno
     h('div', { class: 'field-row' },
       field({ id: 'nouveau-date', label: 'Date', control: day }),
       field({ id: 'nouveau-heure', label: 'Heure', control: slot })),
+    overlap,
     field({ id: 'nouveau-nom', label: 'Nom du client', control: name }),
     field({ id: 'nouveau-telephone', label: 'Téléphone', optional: true, control: phone }),
     field({ id: 'nouveau-note', label: 'Note', optional: true, control: note }),
@@ -1595,13 +1633,16 @@ function openNewBooking({ date = '', time = '', name: knownName = '', phone: kno
     try {
       const { booking } = await call('/api/salon/bookings', {
         method: 'POST',
-        body: { serviceId: service.value, date: day.value, time: slot.value, name: name.value, phone: phone.value, note: note.value },
+        body: {
+          serviceId: service.value, date: day.value, time: slot.value, name: name.value, phone: phone.value, note: note.value,
+          force: taken.has(slot.value),
+        },
       });
       markFresh(booking.id);
       state.day = booking.date;
       sheet.dialog.close();
       upsert(booking);
-      toast(`${booking.name} · ${whenLabel(booking)}`, { title: 'Rendez-vous enregistré' });
+      toast(`${booking.name} · ${whenLabel(booking)}`, { title: taken.has(booking.time) ? 'Rendez-vous superposé' : 'Rendez-vous enregistré' });
     } catch (err) {
       fail(err.data?.fields ? Object.values(err.data.fields).join(' ') : err.message);
       if (err.status === 409) await loadTimes();

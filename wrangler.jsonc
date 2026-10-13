@@ -36,5 +36,16 @@
   // ],
 
   // Journal des erreurs, visible dans le tableau de bord de Cloudflare.
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+
+  // Le site d'essai : un second Worker, « latelier-de-cyrille-essai », avec ses propres données.
+  // On y teste tout sans toucher au vrai site (voir « Un site d'essai » dans le README).
+  "env": {
+    "essai": {
+      "vars": { "ESSAI": "1" },
+      "durable_objects": {
+        "bindings": [{ "name": "SALON", "class_name": "Salon" }]
+      }
+    }
+  }
 }

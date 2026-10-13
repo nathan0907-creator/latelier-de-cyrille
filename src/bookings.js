@@ -55,10 +55,11 @@ function createBookings({ config, store, clock, closures = () => store.closures.
       config, bookings: store.bookings.all(), closures: closures(),
       service, date: input.date, start, now, mode,
     });
-    if (problem === 'taken') {
+    // La coiffeuse peut prendre deux clientes à la fois : force, depuis son espace seulement.
+    if (problem === 'taken' && !(mode === 'salon' && input.force === true)) {
       return failure(409, "Ce créneau vient d'être réservé. Choisissez-en un autre.", { code: 'slot_taken' });
     }
-    if (problem) return failure(409, "Ce créneau n'est plus disponible.", { code: 'slot_unavailable' });
+    if (problem && problem !== 'taken') return failure(409, "Ce créneau n'est plus disponible.", { code: 'slot_unavailable' });
 
     if (mode === 'public') {
       const upcoming = store.bookings.all()
@@ -197,7 +198,7 @@ function createBookings({ config, store, clock, closures = () => store.closures.
   const publicView = b => ({
     date: b.date, time: b.time, end: fromMinutes(b.start + b.duration),
     serviceName: b.serviceName, duration: b.duration, price: b.price, priceFrom: Boolean(b.priceFrom), name: b.name,
-    status: b.status, attending: Boolean(b.attending),
+    status: b.status, attending: Boolean(b.attending), cancelledBy: b.status === 'cancelled' ? b.cancelledBy || 'salon' : '',
   });
 
   return { create, setStatus, cancelByClient, attend, resize, move, movableSlots, remove, purgeOld, publicView };
