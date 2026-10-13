@@ -654,6 +654,121 @@
   }
 }
 
+/* ── Fichier clients ───────────────────────────────────────────────────── */
+
+.clients-count {
+  margin-bottom: .75rem;
+  color: var(--muted);
+  font-family: var(--font-label);
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.row--client .row-note {
+  overflow: hidden;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge--blocked {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.client-form {
+  margin-top: 1.5rem;
+}
+
+.client-form textarea {
+  resize: vertical;
+}
+
+.history {
+  margin-block: 1.75rem 1.25rem;
+}
+
+.history-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: .4rem;
+  border-bottom: 3px solid var(--ink);
+  font-size: 1.3rem;
+}
+
+.history-title small {
+  color: var(--muted);
+  font-family: var(--font-label);
+  font-size: .9rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.history-list {
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.history-item {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .25rem 1rem;
+  width: 100%;
+  min-height: 3.25rem;
+  padding: .55rem .25rem;
+  border: 0;
+  border-bottom: 1px dotted var(--hair);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.history-item:hover,
+.history-item:focus-visible {
+  background: var(--paper-2);
+}
+
+.history-item--cancelled .history-what > span:first-child {
+  text-decoration: line-through;
+}
+
+.history-item--cancelled {
+  color: var(--muted);
+}
+
+.history-when,
+.history-what {
+  display: grid;
+}
+
+.history-when strong {
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.history-when span,
+.history-what span + span {
+  color: var(--muted);
+  font-size: .95rem;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.history-what > span:first-child {
+  font-weight: 700;
+}
+
+@media (min-width: 46rem) {
+  .row--client {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
 /* ── Fermetures ────────────────────────────────────────────────────────── */
 
 .closure-form {

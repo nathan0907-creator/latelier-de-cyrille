@@ -36,6 +36,7 @@ const FILES = {
   stats: 'frequentation.json',
   settings: 'reglages.json',
   holidays: 'jours-feries.json',
+  clients: 'clients.json',
 };
 
 /** Le dossier des photos déposées depuis l'espace salon, dans data/. */
@@ -89,6 +90,7 @@ function createStore(target) {
     stats: backend.read('stats', {}),
     settings: backend.read('settings', null),
     holidays: backend.read('holidays', null),
+    clients: backend.read('clients', {}),
   };
   const save = key => backend.write(key, state[key]);
 
@@ -201,6 +203,22 @@ function createStore(target) {
       set(record) {
         state.holidays = record;
         save('holidays');
+      },
+    },
+    /** Fichier clients : la note de la coiffeuse et le « ne plus reprendre », par clé de fiche (voir src/clients.js). */
+    clients: {
+      all: () => state.clients,
+      /** Enregistre une fiche, ou l'efface (record nul). */
+      set(key, record) {
+        if (record) state.clients[key] = record;
+        else delete state.clients[key];
+        save('clients');
+      },
+      removeWhere(predicate) {
+        const keys = Object.keys(state.clients).filter(key => predicate(key, state.clients[key]));
+        for (const key of keys) delete state.clients[key];
+        if (keys.length) save('clients');
+        return keys.length;
       },
     },
     /** Photos déposées depuis l'espace salon : lues à la demande, jamais gardées en mémoire. */

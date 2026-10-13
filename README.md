@@ -156,6 +156,7 @@ Quand un client appuie sur « Me le rappeler », son navigateur s'abonne aux not
 
 Trois onglets de l'espace salon remplacent, pour ce qui change souvent, le passage par `salon.config.js` :
 
+- **Fichier clients** : l'onglet Clients range les rendez-vous par personne (même téléphone, ou même nom quand il n'y a pas de numéro). Recherche par nom ou téléphone ; chaque fiche montre les coordonnées, les rendez-vous passés et à venir, la prestation habituelle, une note libre réservée à la coiffeuse et une case « Ne plus reprendre ».
 - **Temps de pose** : une prestation peut avoir un ou plusieurs temps de pose (une couleur : la pose commence après 30 min et dure 30 min ; un ombré racine en a deux). Pendant une pose, la coiffeuse est libre et le créneau est proposé à quelqu'un d'autre ; l'agenda montre le rendez-vous en plusieurs blocs.
 - **Tarifs** : le nom, la durée et le prix de chaque prestation (prix unique, « à partir de », ou selon la longueur des cheveux), l'ordre, les catégories, les prestations mises à la une, la note affichée avec les tarifs. Une prestation retirée n'est plus proposée ; les rendez-vous déjà pris gardent leur prix et leur durée.
 - **Horaires** : jours ouverts, heures d'ouverture et de fermeture, pause de midi. Les congés et jours fériés restent dans l'onglet Fermetures.
@@ -167,7 +168,7 @@ Ces réglages passent avant `salon.config.js` : une fois que Cyrille a enregistr
 
 ## Données
 
-Les données sont dans `data/` (créé au premier lancement) : `rendez-vous.json`, `fermetures.json`, `compte.json`, `sessions.json` (appareils connectés à l'espace salon), `rappels.json` (abonnements aux notifications et clés du serveur), `frequentation.json` (compteurs de visites, anonymes), `reglages.json` (ce que la coiffeuse a réglé depuis son espace), `jours-feries.json` (jours fériés ouverts, fermeture automatique) et le dossier `photos/` (les photos qu'elle a déposées). Ce dossier contient des coordonnées de clients : sauvegardez-le, ne le publiez jamais (il est déjà exclu par `.gitignore`). Les rendez-vous de plus d'un an sont effacés automatiquement.
+Les données sont dans `data/` (créé au premier lancement) : `rendez-vous.json`, `fermetures.json`, `compte.json`, `sessions.json` (appareils connectés à l'espace salon), `rappels.json` (abonnements aux notifications et clés du serveur), `frequentation.json` (compteurs de visites, anonymes), `reglages.json` (ce que la coiffeuse a réglé depuis son espace), `jours-feries.json` (jours fériés ouverts, fermeture automatique), `clients.json` (les notes du fichier clients) et le dossier `photos/` (les photos qu'elle a déposées). Ce dossier contient des coordonnées de clients : sauvegardez-le, ne le publiez jamais (il est déjà exclu par `.gitignore`). Les rendez-vous de plus d'un an sont effacés automatiquement, et avec eux les fiches clients qui n'en ont plus (`booking.retentionDays` : c'est aussi la profondeur de l'historique d'une fiche).
 
 En ligne sur Cloudflare, les mêmes données sont rangées dans la base du site chez Cloudflare (une ligne par fichier ci-dessus et une par photo déposée, voir `cloudflare/storage.js`), et non dans le dépôt : un site en ligne et l'ordinateur du salon ont chacun leurs propres rendez-vous.
 
@@ -177,7 +178,7 @@ En ligne sur Cloudflare, les mêmes données sont rangées dans la base du site 
 npm test
 ```
 
-85 tests couvrent le calcul des créneaux, les réservations, l'authentification, la sécurité HTTP, le lancement, les rappels (chiffrement vérifié sur l'exemple de la norme), la liste de contrôle (référencement, liens, images, HTTPS, fichiers privés, fréquentation) les jours fériés, les pages par prestation, la réservation au plus tard la veille, l'annulation par le client et les notifications du salon, les réglages de l'espace salon (tarifs, horaires, photos, déplacement d'un rendez-vous) et le fonctionnement sur Cloudflare (pages, réservation et direct à travers l'adaptateur, code de configuration, base de données, réglages et photos).
+87 tests couvrent le calcul des créneaux, les réservations, l'authentification, la sécurité HTTP, le lancement, les rappels (chiffrement vérifié sur l'exemple de la norme), la liste de contrôle (référencement, liens, images, HTTPS, fichiers privés, fréquentation) les jours fériés, les pages par prestation, la réservation au plus tard la veille, l'annulation par le client et les notifications du salon, les réglages de l'espace salon (tarifs, horaires, photos, déplacement d'un rendez-vous) et le fonctionnement sur Cloudflare (pages, réservation et direct à travers l'adaptateur, code de configuration, base de données, réglages et photos).
 
 ## Mettre le site en ligne sur Cloudflare
 
@@ -254,7 +255,7 @@ Non inclus pour l'instant : e-mails ou SMS de confirmation, paiement en ligne, p
 | `src/` | Serveur : créneaux (`availability.js`), réservations, rappels (`reminders.js`, `push.js`), fréquentation (`stats.js`), réglages de l'espace salon (`settings.js`), authentification, sécurité HTTP, temps réel |
 | `src/views/` | Pages, générées côté serveur |
 | `public/css/` | Styles : `base.css` (papier, typographie, languettes, animations), `pages.css` (les pages du journal), `booking.css`, `salon.css` |
-| `public/js/` | `site.js` (animations du site, avis sur les cookies), `booking.js` (réservation, rappel), `salon.js` (espace salon) et `salon-reglages.js` (ses onglets Tarifs, Horaires, Photos) |
+| `public/js/` | `site.js` (animations du site, avis sur les cookies), `booking.js` (réservation, rappel), `salon.js` (espace salon), `salon-clients.js` (son fichier clients) et `salon-reglages.js` (ses onglets Tarifs, Horaires, Photos) |
 | `public/sw.js` | Reçoit et affiche les notifications de rappel |
 | `cloudflare/`, `wrangler.jsonc` | Le site en ligne sur Cloudflare : point d'entrée (`worker.js`), passage de Cloudflare au serveur (`adapter.js`), base de données (`storage.js`), préparation (`build.js`) |
 | `test/` | Tests automatiques |

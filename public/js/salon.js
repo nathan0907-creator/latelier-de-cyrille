@@ -1,5 +1,5 @@
-// Espace salon : connexion, agenda du jour, liste des rendez-vous, fermetures, fréquentation,
-// et les réglages que la coiffeuse fait elle-même (tarifs, horaires, photos : salon-reglages.js).
+// Espace salon : connexion, agenda du jour, liste des rendez-vous, fichier clients (salon-clients.js),
+// fermetures, fréquentation, et les réglages que la coiffeuse fait elle-même (tarifs, horaires, photos : salon-reglages.js).
 // Rien n'est chargé tant que la coiffeuse n'est pas connectée ; ensuite tout arrive en direct.
 
 import {
@@ -7,6 +7,7 @@ import {
   capitalize, fromMinutes, frTime, durationLabel, euros,
 } from './lib.js';
 import { createSettingsViews } from './salon-reglages.js';
+import { createClientsView } from './salon-clients.js';
 
 const root = document.querySelector('[data-salon]');
 const toastBox = document.querySelector('[data-toasts]');
@@ -19,6 +20,7 @@ const state = {
   nowMinutes: 0,
   bookings: [],
   closures: [],
+  clients: {}, // notes et « ne plus reprendre », par clé de fiche
   holidays: { auto: true, list: [] }, // jours fériés à venir, fermés d'office sauf ceux qu'elle ouvre
   tab: 'day',
   day: '',
@@ -292,6 +294,7 @@ async function loadData() {
   state.nowMinutes = data.nowMinutes;
   state.bookings = data.bookings;
   state.closures = data.closures;
+  state.clients = data.clients || {};
   state.holidays = data.holidays || state.holidays;
   // La carte et les horaires peuvent avoir été modifiés depuis l'ouverture de la page.
   config.services = data.services;
@@ -371,6 +374,12 @@ function connect() {
     }
   });
 
+  // Une fiche client modifiée depuis un autre appareil.
+  source.addEventListener('clients', event => {
+    state.clients = JSON.parse(event.data).clients;
+    refresh();
+  });
+
   source.addEventListener('closures', event => {
     const data = JSON.parse(event.data);
     state.closures = data.closures;
@@ -399,6 +408,7 @@ async function enter() {
 const TABS = [
   { key: 'day', label: 'Journée', icon: 'calendar' },
   { key: 'list', label: 'Rendez-vous', icon: 'list' },
+  { key: 'clients', label: 'Clients', icon: 'users' },
   { key: 'closures', label: 'Fermetures', icon: 'ban' },
   { key: 'prices', label: 'Tarifs', icon: 'tag' },
   { key: 'hours', label: 'Horaires', icon: 'clock' },
@@ -414,6 +424,12 @@ const settingsViews = createSettingsViews({
     await loadData();
     renderStats();
   },
+});
+
+// Le fichier clients : une fiche par personne, déduite des rendez-vous.
+const clientsView = createClientsView({
+  state, call, toast, field, openSheet, openDetail, openNewBooking, statusBadge, priceText, telHref,
+  view: () => refs.view,
 });
 
 function mountDashboard() {
@@ -471,6 +487,7 @@ function renderStats() {
 const VIEWS = {
   day: { mount: mountDay, render: renderDay },
   list: { mount: mountList, render: renderList },
+  clients: { mount: clientsView.mount, render: () => {} }, // redessiné par refresh(), avec la fiche ouverte
   closures: { mount: mountClosures, render: renderClosures },
   audience: { mount: mountAudience, render: () => {} },
   // Ces vues sont des formulaires : l'arrivée d'un rendez-vous ne doit pas les redessiner.
@@ -491,6 +508,7 @@ function refresh() {
   if (!state.today || !refs.view) return;
   renderStats();
   VIEWS[state.tab].render();
+  clientsView.render();
   refreshDetail();
 }
 
@@ -1085,7 +1103,8 @@ function renderDetail({ focus = false } = {}) {
   detail.sheet.body.replaceChildren(...[
     h('p', { class: 'sheet-actions' }, statusBadge(booking),
       booking.status === 'cancelled' && booking.cancelledBy === 'client' ? h('span', { class: 'badge badge--neutral' }, 'Par le client') : null,
-      h('span', { class: 'badge badge--neutral' }, booking.source === 'salon' ? 'Saisi au salon' : 'Réservé en ligne')),
+      h('span', { class: 'badge badge--neutral' }, booking.source === 'salon' ? 'Saisi au salon' : 'Réservé en ligne'),
+      clientsView.isBlocked(booking) ? h('span', { class: 'badge badge--blocked' }, 'Ne plus reprendre') : null),
     h('dl', { class: 'detail-list' },
       row('Prestation', booking.serviceName),
       row('Date', capitalize(formatLong(booking.date))),
@@ -1094,7 +1113,8 @@ function renderDetail({ focus = false } = {}) {
       row('Tarif', priceText(booking)),
       booking.phone ? row('Téléphone', h('a', { class: 'link', href: telHref(booking.phone) }, booking.phone)) : null,
       booking.note ? row('Message', booking.note) : null,
-      row('Reçu le', `${received.toLocaleDateString('fr-FR')} à ${received.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`)),
+      row('Reçu le', `${received.toLocaleDateString('fr-FR')} à ${received.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`),
+      row('Fiche client', h('button', { type: 'button', class: 'link', onclick: () => clientsView.openClient(clientsView.clientOf(booking)?.key) }, 'Voir son historique'))),
     detail.error ? h('p', { class: 'notice notice--error', role: 'alert' }, detail.error) : null,
     actionBar,
   ].filter(Boolean));
@@ -1103,7 +1123,7 @@ function renderDetail({ focus = false } = {}) {
 
 // — Nouveau rendez-vous, saisi par la coiffeuse —
 
-function openNewBooking({ date = '', time = '' } = {}) {
+function openNewBooking({ date = '', time = '', name: knownName = '', phone: knownPhone = '' } = {}) {
   const sheet = openSheet({ eyebrow: 'Saisie au salon', title: 'Nouveau rendez-vous' });
   const error = h('p', { class: 'notice notice--error', role: 'alert', hidden: true });
   const categories = [...new Set(config.services.map(service => service.category))];
@@ -1114,6 +1134,9 @@ function openNewBooking({ date = '', time = '' } = {}) {
   const slot = h('select', { name: 'time', required: true });
   const name = h('input', { name: 'name', type: 'text', maxlength: '60', autocomplete: 'off', required: true });
   const phone = h('input', { name: 'phone', type: 'tel', inputmode: 'tel', maxlength: '30', autocomplete: 'off' });
+  // Depuis une fiche client : le nom et le téléphone sont déjà connus.
+  name.value = knownName;
+  phone.value = knownPhone;
   const note = h('input', { name: 'note', type: 'text', maxlength: '200', autocomplete: 'off' });
   const submit = h('button', { type: 'submit', class: 'btn', disabled: true }, h('span', {}, 'Enregistrer'), icon('check'));
 
@@ -1189,7 +1212,7 @@ function openNewBooking({ date = '', time = '' } = {}) {
 
   sheet.body.replaceChildren(form);
   loadTimes();
-  name.focus();
+  (knownName ? service : name).focus();
 }
 
 // — Mot de passe —
