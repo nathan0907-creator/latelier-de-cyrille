@@ -11,6 +11,7 @@ const { createStatic, createVersion } = require('./static');
 const { createStats } = require('./stats');
 const { createSettings } = require('./settings');
 const { createHolidays } = require('./holidays');
+const { createClients } = require('./clients');
 const { HttpError, clientIp, isSecure, sameOrigin, readJson, applySecurityHeaders, send, sendJson, sendHtml } = require('./http');
 const views = require('./views');
 
@@ -36,6 +37,7 @@ function createApp({
   const { config } = settings;
   // Les jours fermés : ceux que la coiffeuse a saisis, et les jours fériés (fermés d'office).
   const holidays = createHolidays({ config, store, clock });
+  const clients = createClients({ store });
   const closedDays = () => holidays.closures();
   const bookings = createBookings({ config, store, clock, closures: closedDays });
   const reminders = createReminders({ config, store, clock, ...(sendPush && { send: sendPush }) });
@@ -265,6 +267,7 @@ function createApp({
         bookings: store.bookings.all(),
         closures: store.closures.all(),
         holidays: holidays.state(),
+        clients: clients.all(),
         // La carte et les horaires du moment : ils peuvent avoir changé depuis l'ouverture de la page.
         services: config.services.map(({ id, name, duration, price, priceFrom, category }) => ({ id, name, duration, price, priceFrom, category })),
         hours: config.hours,
@@ -282,6 +285,14 @@ function createApp({
       for (const day of holidays.upcoming()) events.send('public', 'slots', { date: day.date });
       events.send('salon', 'closures', { closures: store.closures.all(), holidays: holidays.state() });
       return json(200, { holidays: holidays.state() });
+    }
+
+    // Fichier clients : la note et le « ne plus reprendre » d'une fiche ({ key, note, blocked }).
+    if (route === 'PUT /api/salon/clients') {
+      const result = clients.save(await readJson(req));
+      if (!result.ok) return json(result.status, { error: result.error });
+      events.send('salon', 'clients', { clients: result.clients });
+      return json(200, { clients: result.clients });
     }
 
     // — Réglages : ce que la coiffeuse modifie elle-même —
@@ -531,9 +542,10 @@ function createApp({
 
   // ── Entretien ──────────────────────────────────────────────────────────
 
-  /** Efface les vieux rendez-vous, les sessions expirées et les compteurs des limiteurs. */
+  /** Efface les vieux rendez-vous (et les fiches clients qui n'en ont plus), les sessions expirées et les compteurs des limiteurs. */
   function maintain() {
     bookings.purgeOld();
+    clients.purge();
     auth.sweep();
     Object.values(limits).forEach(limiter => limiter.sweep());
   }
@@ -554,7 +566,7 @@ function createApp({
     events.close();
   }
 
-  return { handle, close, maintain, auth, events, reminders, stats, settings, holidays, config };
+  return { handle, close, maintain, auth, events, reminders, stats, settings, holidays, clients, config };
 }
 
 module.exports = { createApp };

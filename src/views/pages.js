@@ -332,6 +332,7 @@ function privacy(site) {
       <h2>Ce qui est enregistré, et pourquoi</h2>
       <h3>Quand vous réservez</h3>
       <p>Votre nom, votre numéro de téléphone, la prestation, la date et l'heure du rendez-vous, et le message que vous choisissez d'ajouter. Ces informations servent uniquement à organiser le rendez-vous que vous demandez et à vous prévenir en cas d'imprévu (mesures prises à votre demande avant la prestation, article 6.1.b du RGPD).</p>
+      <p>Vos rendez-vous forment votre fiche au salon. La coiffeuse peut y ajouter une note utile pour vous recevoir la fois suivante (une formule de couleur, par exemple). Cette fiche n'est vue que par elle et s'efface avec vos rendez-vous.</p>
       ${leads ? html`<h3>Si vous acceptez les notifications</h3>
       <p>Les notifications sont facultatives : une case, que vous pouvez décocher, les propose au moment de réserver. Si vous les acceptez, votre navigateur fournit au site une adresse technique qui permet de vous prévenir sur cet appareil : quand le salon confirme, déplace ou annule votre rendez-vous, puis en rappel (${leads}). Elle ne dit rien de vous, ne sert qu'à cela et est effacée après le rendez-vous. Vous retirez votre accord quand vous voulez&nbsp;: en appuyant de nouveau sur le bouton, ou dans les réglages de notifications de votre navigateur.</p>
       <h3>Le lien de votre rendez-vous</h3>
