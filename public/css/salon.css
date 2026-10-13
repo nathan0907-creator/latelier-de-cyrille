@@ -1543,3 +1543,19 @@
 .block--rest {
   border-style: dashed;
 }
+
+/* Fiche d'un rendez-vous : rallonger ou raccourcir d'une tranche. */
+.duration-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.duration-edit .icon-btn {
+  width: 2.25rem;
+  height: 2.25rem;
+  min-height: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1;
+}

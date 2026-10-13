@@ -83,7 +83,7 @@ module.exports = {
     maxActivePerPhone: 3,  // rendez-vous à venir autorisés par numéro de téléphone
     retentionDays: 365,    // les rendez-vous passés sont effacés après un an
     // Rappels par notification proposés au client : combien de minutes avant le rendez-vous.
-    reminders: [1440, 120], // la veille, puis 2 h avant
+    reminders: [1440, 60], // la veille, puis 1 h avant (avec « Je viens » et « Annuler »)
     // Les règles du salon : rappelées à la une, au moment de réserver et dans la confirmation.
     // Laissez vide ('') pour ne pas les afficher.
     appointmentOnly: 'Uniquement sur rendez-vous',

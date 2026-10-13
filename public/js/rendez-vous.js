@@ -10,20 +10,30 @@ if (root && ref) {
   const confirm = root.querySelector('[data-cancel-confirm]');
   const yes = root.querySelector('[data-cancel-yes]');
   const error = root.querySelector('[data-cancel-error]');
+  const reason = root.querySelector('[data-cancel-reason]');
 
   const asking = on => {
     ask.hidden = on;
     confirm.hidden = !on;
-    (on ? yes : ask).focus();
+    (on ? reason : ask).focus();
   };
   ask.addEventListener('click', () => asking(true));
   root.querySelector('[data-cancel-no]').addEventListener('click', () => asking(false));
 
+  // Depuis le bouton « Annuler » du rappel : la question est posée tout de suite.
+  if (new URLSearchParams(location.search).has('annuler')) asking(true);
+
   yes.addEventListener('click', async () => {
     error.hidden = true;
+    if (reason.value.trim().length < 2) {
+      error.textContent = "Indiquez la raison de l'annulation : elle est transmise au salon.";
+      error.hidden = false;
+      reason.focus();
+      return;
+    }
     yes.disabled = true;
     try {
-      await api('/api/bookings/cancel', { method: 'POST', body: { ref } });
+      await api('/api/bookings/cancel', { method: 'POST', body: { ref, reason: reason.value } });
     } catch (err) {
       // Déjà annulé (un autre onglet, le salon) : la page rechargée le dira.
       if (err.status !== 409) {

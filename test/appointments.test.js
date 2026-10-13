@@ -138,7 +138,10 @@ test('annulation par le client : le créneau se libère, le salon est prévenu e
   const cross = await fetch(`${site.origin}/api/bookings/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://ailleurs.example' }, body: JSON.stringify({ ref }) });
   assert.equal(cross.status, 403, "refusé depuis un autre site");
 
-  const cancelled = await site.request('POST', '/api/bookings/cancel', { body: { ref } });
+  const silent = await site.request('POST', '/api/bookings/cancel', { body: { ref } });
+  assert.equal(silent.status, 400, 'la raison est demandée');
+  assert.ok(silent.json.fields.reason);
+  const cancelled = await site.request('POST', '/api/bookings/cancel', { body: { ref, reason: 'Enfant malade' } });
   assert.equal(cancelled.status, 200);
   assert.equal(cancelled.json.booking.status, 'cancelled');
   assert.equal(await slotFree(), true, 'le créneau est de nouveau proposé');
@@ -146,8 +149,8 @@ test('annulation par le client : le créneau se libère, le salon est prévenu e
   assert.equal(site.sent.length, 0, "le client n'est pas prévenu de sa propre annulation");
 
   const [saved] = (await site.call('GET', '/api/salon/data')).json.bookings;
-  assert.deepEqual([saved.status, saved.cancelledBy], ['cancelled', 'client'], "l'espace salon sait qui a annulé");
-  assert.equal((await site.request('POST', '/api/bookings/cancel', { body: { ref } })).status, 409, 'déjà annulé');
+  assert.deepEqual([saved.status, saved.cancelledBy, saved.cancelReason], ['cancelled', 'client', 'Enfant malade'], "l'espace salon sait qui a annulé, et pourquoi");
+  assert.equal((await site.request('POST', '/api/bookings/cancel', { body: { ref, reason: 'Encore' } })).status, 409, 'déjà annulé');
 
   const page = (await site.request('GET', `/rendez-vous?r=${ref}`)).text;
   assert.match(page, /Rendez-vous annulé/);
@@ -176,12 +179,12 @@ test('annulation par le client : impossible une fois le rendez-vous passé', asy
 
   // Mardi, 9h59 : encore possible. Mardi, 10h : le rendez-vous a commencé.
   Object.assign(now, { date: TUESDAY, minutes: 600 });
-  assert.equal((await post('/api/bookings/cancel', { ref })).status, 409);
+  assert.equal((await post('/api/bookings/cancel', { ref, reason: 'Retard' })).status, 409);
   const page = await (await fetch(`${origin}/rendez-vous?r=${ref}`)).text();
   assert.match(page, /Rendez-vous passé/);
   assert.doesNotMatch(page, /data-cancel-ask/);
   now.minutes = 599;
-  assert.equal((await post('/api/bookings/cancel', { ref })).status, 200);
+  assert.equal((await post('/api/bookings/cancel', { ref, reason: 'Retard' })).status, 200);
 });
 
 test('notifications : le client est prévenu quand le salon confirme, déplace ou annule', async t => {
@@ -225,4 +228,65 @@ test('notifications : le client est prévenu quand le salon confirme, déplace o
   assert.equal((await site.call('GET', '/api/salon/data')).json.bookings[0].cancelledBy, 'salon');
   await site.app.reminders.tick();
   assert.equal(site.store.reminders.all().length, 0);
+});
+
+test("alertes de la coiffeuse : nouvelle demande et annulation, sur son téléphone", async t => {
+  const site = await salon();
+  t.after(site.stop);
+  assert.equal((await site.request('POST', '/api/salon/push', { body: { subscription: subscription('cyrille') } })).status, 401, 'réservé à la coiffeuse');
+  assert.equal((await site.call('POST', '/api/salon/push', { subscription: subscription('cyrille') })).status, 201);
+  assert.equal((await site.call('POST', '/api/salon/push', { subscription: { endpoint: 'https://ailleurs.example/x' } })).status, 400);
+
+  const { ref } = (await site.request('POST', '/api/bookings', { body: booking() })).json.reminder;
+  await site.settle();
+  assert.deepEqual(site.sent.map(s => [s.endpoint.split('/').pop(), s.title, s.url]), [['cyrille', 'Nouvelle demande de rendez-vous', 'salon']]);
+  assert.match(site.sent[0].body, /Léa Dupont · Court/);
+
+  await site.request('POST', '/api/bookings/cancel', { body: { ref, reason: 'Voiture en panne' } });
+  await site.settle();
+  assert.equal(site.sent[1].title, 'Rendez-vous annulé par le client');
+  assert.match(site.sent[1].body, /Raison : Voiture en panne/);
+
+  assert.equal((await site.call('DELETE', '/api/salon/push', { endpoint: subscription('cyrille').endpoint })).status, 200);
+  await site.request('POST', '/api/bookings', { body: booking({ time: '11:00', phone: '0611111111' }) });
+  await site.settle();
+  assert.equal(site.sent.length, 2, 'appareil retiré : plus d\'alerte');
+});
+
+test('« Je viens » depuis le rappel : la coiffeuse le voit', async t => {
+  const site = await salon();
+  t.after(site.stop);
+  const { ref } = (await site.request('POST', '/api/bookings', { body: booking() })).json.reminder;
+  assert.equal((await site.request('POST', '/api/bookings/attend', { body: { ref: 'faux.faux' } })).status, 404);
+  assert.equal((await site.request('POST', '/api/bookings/attend', { body: { ref } })).status, 200);
+  assert.ok((await site.call('GET', '/api/salon/data')).json.bookings[0].attending);
+});
+
+test('la coiffeuse rallonge, raccourcit, déplace en validant, et superpose si elle le veut', async t => {
+  const site = await salon();
+  t.after(site.stop);
+  await site.request('POST', '/api/bookings', { body: booking() }); // 10h – 10h30
+  await site.request('POST', '/api/bookings', { body: booking({ time: '11:00', name: 'Zoé Martin', phone: '0611111111' }) });
+  const [lea, zoe] = (await site.call('GET', '/api/salon/data')).json.bookings;
+  const patch = (id, body) => site.call('PATCH', `/api/salon/bookings/${id}`, body);
+
+  assert.equal((await patch(lea.id, { duration: 60 })).json.booking.duration, 60, '10h – 11h : la place est libre');
+  const clash = await patch(lea.id, { duration: 90 });
+  assert.deepEqual([clash.status, clash.json.code], [409, 'slot_taken'], 'déborderait sur 11h');
+  assert.equal((await patch(lea.id, { duration: 90, force: true })).json.booking.duration, 90, 'superposé à sa demande');
+  assert.equal((await patch(lea.id, { duration: 45 })).status, 400, 'par tranches de 30 minutes');
+  assert.equal((await patch(lea.id, { duration: 30 })).json.booking.duration, 30);
+
+  // Valider la demande de Zoé en la déplaçant dans la journée : un seul message, « déplacé ».
+  site.sent.length = 0;
+  await site.request('POST', '/api/reminders', { body: { ref: (await site.app.reminders.refFor(zoe)).ref, subscription: subscription('zoe') } });
+  const moved = await patch(zoe.id, { date: TUESDAY, time: '14:00', status: 'confirmed' });
+  assert.deepEqual([moved.json.booking.time, moved.json.booking.status], ['14:00', 'confirmed']);
+  await site.settle();
+  assert.deepEqual(site.sent.map(s => s.title), ['Rendez-vous déplacé']);
+
+  // Sur le créneau de Léa : refusé, sauf si elle choisit de les superposer.
+  assert.equal((await patch(zoe.id, { date: TUESDAY, time: '10:00' })).status, 409);
+  assert.equal((await patch(zoe.id, { date: TUESDAY, time: '10:00', force: true })).json.booking.time, '10:00');
+  assert.equal((await patch(zoe.id, { date: TUESDAY, time: '22:00', force: true })).json.code, 'slot_unavailable', 'jamais salon fermé');
 });

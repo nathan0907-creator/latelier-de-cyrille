@@ -23,7 +23,10 @@ function booking(site) {
   const page = PAGES.find(p => p.path === '/reservation');
   const { noShow } = config.booking;
   // La règle du rendez-vous manqué, et qui prévenir : dite avant d'envoyer, redite dans la confirmation.
-  const warning = html`<p class="pay-note">${icon('info')}<span>${noShow ? html`<strong>${noShow}</strong> ` : ''}Un empêchement&nbsp;? Prévenez le salon au <a class="link" href="${telHref(phone)}">${phone}</a>.</span></p>`;
+  // L'heure demandée peut être ajustée par la coiffeuse en validant : dit avant d'envoyer, redit après.
+  const who = config.owner || 'la coiffeuse';
+  const warning = html`<p class="pay-note">${icon('info')}<span>${noShow ? html`<strong>${noShow}</strong> ` : ''}Un empêchement&nbsp;? Prévenez le salon au <a class="link" href="${telHref(phone)}">${phone}</a>.</span></p>
+<p class="pay-note">${icon('clock')}<span><strong>C'est une demande&nbsp;:</strong> en la validant, ${who} peut ajuster l'heure dans la journée. Vous en êtes prévenu(e)&nbsp;; pensez à revenir vérifier votre rendez-vous sur le site.</span></p>`;
 
   const data = {
     today: now.date,

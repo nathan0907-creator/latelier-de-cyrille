@@ -478,12 +478,18 @@ function appointment(site, booking) {
       ${row('Tarif', priceLabel(booking))}
       ${row('Au nom de', booking.name)}
     </dl>
+    ${!cancelled && !past && booking.status === 'pending' ? html`<p class="rules">${icon('clock')}<span><strong>Demande en attente de validation.</strong> En validant, ${config.owner || 'la coiffeuse'} peut ajuster l'heure dans la journée : vous serez prévenu(e). Revenez vérifier ici de temps en temps.</span></p>` : ''}
+    ${!cancelled && !past && booking.attending ? html`<p class="notice notice--ok">Vous avez confirmé votre venue. À bientôt&nbsp;!</p>` : ''}
     ${!cancelled && !past ? html`
     ${config.booking.noShow ? html`<p class="rules">${icon('info')}<span><strong>${config.booking.noShow}</strong> Si vous ne pouvez pas venir, annulez ici ou prévenez le salon${callUs}.</span></p>` : ''}
     <div class="appointment-cancel" data-cancel>
       <button type="button" class="btn btn--outline" data-cancel-ask><span>Annuler ce rendez-vous</span>${icon('ban')}</button>
       <div class="appointment-confirm" data-cancel-confirm hidden>
         <p class="appointment-question">Annuler ce rendez-vous&nbsp;? Le créneau sera proposé à quelqu'un d'autre.</p>
+        <div class="field">
+          <label for="annulation-raison">Pourquoi annulez-vous&nbsp;?</label>
+          <textarea id="annulation-raison" maxlength="200" rows="2" placeholder="Un empêchement, un imprévu…" data-cancel-reason></textarea>
+        </div>
         <button type="button" class="btn btn--danger" data-cancel-yes><span>Oui, annuler</span></button>
         <button type="button" class="btn btn--outline" data-cancel-no><span>Non, le garder</span></button>
       </div>

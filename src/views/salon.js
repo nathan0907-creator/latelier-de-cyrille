@@ -12,6 +12,8 @@ function salon(site) {
     services: config.services.map(({ id, name, duration, price, priceFrom, category }) => ({ id, name, duration, price, priceFrom, category })),
     hours: config.hours,
     slotStep: config.booking.slotStep,
+    // Les alertes sur l'appareil de la coiffeuse (nouvelle demande, annulation), même page fermée.
+    push: site.push ? { key: site.push.key, worker: '/sw.js' } : null,
   };
 
   const body = html`

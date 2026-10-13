@@ -45,6 +45,11 @@ function createApp({
   const tell = (booking, kind) => {
     reminders.notify(booking, kind).catch(err => console.error('[notifications]', err));
   };
+  /** Alerte sur le téléphone de la coiffeuse, même quand son espace est fermé. */
+  const alertSalon = news => {
+    reminders.alertSalon(news).catch(err => console.error('[alertes]', err));
+  };
+  const whenOf = booking => `${formatShort(booking.date)} à ${frTime(booking.start)}`;
   const auth = createAuth({ store, setupCode });
   const events = createEvents(live);
   const stats = createStats({ store, clock, saveEveryMs: timers ? 30_000 : 0 });
@@ -162,6 +167,7 @@ function createApp({
       const result = bookings.create(body, { mode: 'public' });
       if (!result.ok) return reject(result);
       announce('created', result.booking);
+      alertSalon({ title: 'Nouvelle demande de rendez-vous', body: `${result.booking.name} · ${result.booking.serviceName} · ${whenOf(result.booking)}`, tag: `demande-${result.booking.id}` });
       stats.booking();
       // « reminder » : la référence qui permet à ce client, et à lui seul, de demander un rappel.
       return json(201, { booking: bookings.publicView(result.booking), reminder: reminders.refFor(result.booking) });
@@ -174,9 +180,26 @@ function createApp({
       const body = await readJson(req);
       const found = reminders.find(body.ref);
       if (!found) return json(404, { error: 'Rendez-vous introuvable.' });
-      const result = bookings.cancelByClient(found.id);
+      const result = bookings.cancelByClient(found.id, body.reason);
       if (!result.ok) return reject(result);
       reminders.forget(result.booking.id);
+      announce('updated', result.booking);
+      alertSalon({
+        title: 'Rendez-vous annulé par le client',
+        body: `${result.booking.name} · ${whenOf(result.booking)} · Raison : ${result.booking.cancelReason}`,
+        tag: `annulation-${result.booking.id}`,
+      });
+      return json(200, { booking: bookings.publicView(result.booking) });
+    }
+
+    // Le client confirme qu'il vient, depuis le bouton « Je viens » du rappel.
+    if (route === 'POST /api/bookings/attend') {
+      const limit = limits.reminder.take(ip);
+      if (!limit.ok) return tooMany(limit, 'Trop de demandes. Réessayez dans quelques minutes.');
+      const found = reminders.find((await readJson(req)).ref);
+      if (!found) return json(404, { error: 'Rendez-vous introuvable.' });
+      const result = bookings.attend(found.id);
+      if (!result.ok) return reject(result);
       announce('updated', result.booking);
       return json(200, { booking: bookings.publicView(result.booking) });
     }
@@ -249,6 +272,18 @@ function createApp({
     }
 
     if (route === 'GET /api/salon/events') return events.open('salon', req, res, { ip, sessionId: session.id });
+
+    // Les alertes sur l'appareil de la coiffeuse (cloche de l'espace salon).
+    if (route === 'POST /api/salon/push' || route === 'DELETE /api/salon/push') {
+      const body = await readJson(req);
+      if (method === 'DELETE') {
+        reminders.removeSalonDevice(body.endpoint);
+        return json(200, { ok: true });
+      }
+      const result = reminders.addSalonDevice(body.subscription);
+      if (!result.ok) return reject(result);
+      return json(201, { ok: true });
+    }
 
     // Fréquentation du site sur les 30 derniers jours (ou ?jours=7, 90…).
     if (route === 'GET /api/salon/stats') {
@@ -341,15 +376,28 @@ function createApp({
     const bookingRoute = /^\/api\/salon\/bookings\/([\w-]{6,40})$/.exec(pathname);
     if (bookingRoute && method === 'PATCH') {
       const body = await readJson(req);
-      // Avec une date et une heure : on déplace le rendez-vous. Sinon : on change son statut.
+      const force = body.force === true;
+      // Une nouvelle durée : le rendez-vous est rallongé ou raccourci.
+      if (body.duration !== undefined) {
+        const resized = bookings.resize(bookingRoute[1], Number(body.duration), { force });
+        if (!resized.ok) return reject(resized);
+        announce('updated', resized.booking);
+        return json(200, { booking: resized.booking });
+      }
+      // Avec une date et une heure : on déplace le rendez-vous (et on le confirme en même temps,
+      // avec « status »). Sinon : on change son statut.
       if (body.date || body.time) {
-        const moved = bookings.move(bookingRoute[1], body);
+        const moved = bookings.move(bookingRoute[1], { date: body.date, time: body.time, force });
         if (!moved.ok) return reject(moved);
         reminders.reschedule(moved.booking);
         events.send('public', 'slots', { date: moved.from.date });
-        announce('updated', moved.booking);
-        tell(moved.booking, 'moved');
-        return json(200, { booking: moved.booking });
+        const confirming = body.status === 'confirmed' && moved.booking.status === 'pending';
+        const booking = confirming ? bookings.setStatus(moved.booking.id, 'confirmed').booking : moved.booking;
+        announce('updated', booking);
+        const changed = moved.from.date !== booking.date || moved.from.time !== booking.time;
+        if (changed) tell(booking, 'moved');
+        else if (confirming) tell(booking, 'confirmed');
+        return json(200, { booking });
       }
       const result = bookings.setStatus(bookingRoute[1], body.status);
       if (!result.ok) return reject(result);
