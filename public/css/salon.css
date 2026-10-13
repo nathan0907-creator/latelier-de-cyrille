@@ -1645,3 +1645,66 @@
 .text-danger {
   color: var(--danger);
 }
+
+/* ── E-mails aux clients : texte et aperçu ──────────────────────────────── */
+
+.mail-card {
+  max-width: 44rem;
+}
+
+.mail-card-head h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .6rem;
+  margin: 0;
+}
+
+.mail-card .field {
+  width: 100%;
+}
+
+.mail-card textarea {
+  min-height: 9rem;
+}
+
+.mail-preview-label {
+  margin: 0;
+  font-family: var(--font-label);
+  font-size: .8rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.mail-preview {
+  width: 100%;
+  padding: 1rem 1.1rem;
+  border: 1px dashed var(--ink);
+  background: var(--paper);
+  overflow-wrap: anywhere;
+}
+
+.mail-preview p {
+  margin: 0 0 .6rem;
+}
+
+.mail-preview-subject {
+  font-weight: 700;
+}
+
+.mail-preview-button {
+  display: inline-block;
+  padding: .45rem .8rem;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-label);
+  font-size: .85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.mail-preview-info {
+  color: var(--muted);
+  font-size: .9rem;
+}

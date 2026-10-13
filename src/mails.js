@@ -20,40 +20,96 @@ function createMails({ config, store, clock, mailer, pageOf }) {
   const base = booking => (config.siteUrl || booking.site || '').replace(/\/+$/, '');
   const link = booking => (base(booking) ? `${base(booking)}/${pageOf(booking)}` : '');
 
-  const MESSAGES = {
-    received: booking => ({
-      subject: `Votre demande de rendez-vous du ${when(booking)}`,
-      lines: [`Bonjour ${firstName(booking)},`, `Votre demande de rendez-vous est bien reçue : ${booking.serviceName}, ${when(booking)}.`,
-        `${config.name} va la valider et peut ajuster l'heure dans la journée : vous recevrez un e-mail. En attendant, revenez vérifier votre rendez-vous de temps en temps.`],
-      action: 'Voir ou annuler mon rendez-vous',
-    }),
-    confirmed: booking => ({
-      subject: `Rendez-vous confirmé : ${when(booking)}`,
-      lines: [`Bonjour ${firstName(booking)},`, `Votre rendez-vous est confirmé : ${booking.serviceName}, ${when(booking)}.`, 'À bientôt au salon !'],
-      action: 'Voir ou annuler mon rendez-vous',
-    }),
-    moved: booking => ({
-      subject: `Rendez-vous déplacé : ${when(booking)}`,
-      lines: [`Bonjour ${firstName(booking)},`, `Votre rendez-vous a été déplacé. Nouveau rendez-vous : ${booking.serviceName}, ${when(booking)}.`,
-        "Si cette heure ne vous convient pas, vous pouvez l'annuler ou appeler le salon."],
-      action: 'Voir ou annuler mon rendez-vous',
-    }),
-    cancelled: booking => ({
-      subject: `Rendez-vous annulé : ${when(booking)}`,
-      lines: [`Bonjour ${firstName(booking)},`, `${config.name} a dû annuler votre rendez-vous du ${when(booking)}. Toutes nos excuses !`,
-        'Pour en prendre un autre, choisissez un créneau en ligne ou appelez le salon.'],
-      action: 'Prendre un autre rendez-vous',
-      href: booking => (base(booking) ? `${base(booking)}/reservation` : ''),
-    }),
-    reminder: booking => ({
-      subject: `N'oubliez pas votre rendez-vous demain à ${frTime(booking.start)}`,
-      lines: [`Bonjour ${firstName(booking)},`, `N'oubliez pas votre rendez-vous ${when(booking)} : ${booking.serviceName}.`,
-        `Un empêchement ? Annulez-le depuis votre page de rendez-vous${config.contact.phone ? ` ou appelez le salon au ${config.contact.phone}` : ''}, pour que le créneau serve à quelqu'un d'autre.`],
-      action: 'Voir ou annuler mon rendez-vous',
-    }),
+  /** Les e-mails, leur moment, et le bouton sous le texte (lien vers le rendez-vous ou la réservation). */
+  const KINDS = {
+    received: { label: 'Demande reçue', when: 'Juste après une réservation en ligne.', action: 'Voir ou annuler mon rendez-vous' },
+    confirmed: { label: 'Rendez-vous confirmé', when: 'Quand vous confirmez une demande, ou saisissez un rendez-vous avec un e-mail.', action: 'Voir ou annuler mon rendez-vous' },
+    moved: { label: 'Rendez-vous déplacé', when: 'Quand vous changez le jour ou l\'heure.', action: 'Voir ou annuler mon rendez-vous' },
+    cancelled: { label: 'Rendez-vous annulé', when: 'Quand vous annulez un rendez-vous.', action: 'Prendre un autre rendez-vous', page: 'reservation' },
+    reminder: { label: 'Rappel de la veille', when: '24 h avant le rendez-vous.', action: 'Voir ou annuler mon rendez-vous' },
   };
 
-  const firstName = booking => booking.name.split(' ')[0];
+  /** Les textes d'origine. Entre accolades, ce que le site remplit pour chaque client (FIELDS). */
+  const DEFAULTS = {
+    received: {
+      subject: 'Votre demande de rendez-vous du {date} à {heure}',
+      body: "Bonjour {prenom},\nVotre demande de rendez-vous est bien reçue : {prestation}, {date} à {heure}.\n{salon} va la valider et peut ajuster l'heure dans la journée : vous recevrez un e-mail. En attendant, revenez vérifier votre rendez-vous de temps en temps.",
+    },
+    confirmed: {
+      subject: 'Rendez-vous confirmé : {date} à {heure}',
+      body: 'Bonjour {prenom},\nVotre rendez-vous est confirmé : {prestation}, {date} à {heure}.\nÀ bientôt au salon !',
+    },
+    moved: {
+      subject: 'Rendez-vous déplacé : {date} à {heure}',
+      body: "Bonjour {prenom},\nVotre rendez-vous a été déplacé. Nouveau rendez-vous : {prestation}, {date} à {heure}.\nSi cette heure ne vous convient pas, vous pouvez l'annuler ou appeler le salon.",
+    },
+    cancelled: {
+      subject: 'Rendez-vous annulé : {date} à {heure}',
+      body: 'Bonjour {prenom},\n{salon} a dû annuler votre rendez-vous du {date} à {heure}. Toutes nos excuses !\nPour en prendre un autre, choisissez un créneau en ligne ou appelez le salon.',
+    },
+    reminder: {
+      subject: "N'oubliez pas votre rendez-vous demain à {heure}",
+      body: `Bonjour {prenom},\nN'oubliez pas votre rendez-vous {date} à {heure} : {prestation}.\nUn empêchement ? Annulez-le depuis votre page de rendez-vous${config.contact.phone ? ' ou appelez le salon au {telephone}' : ''}, pour que le créneau serve à quelqu'un d'autre.`,
+    },
+  };
+
+  /** Ce que le site remplit dans les textes, pour chaque client. */
+  const FIELDS = {
+    prenom: booking => booking.name.split(' ')[0],
+    nom: booking => booking.name,
+    prestation: booking => booking.serviceName,
+    date: booking => formatLong(booking.date),
+    heure: booking => frTime(booking.start),
+    salon: () => config.name,
+    telephone: () => config.contact.phone || '',
+  };
+  const fill = (template, booking) => template.replace(/\{(\w+)\}/g, (all, name) => (FIELDS[name] ? FIELDS[name](booking) : all));
+
+  /** Le texte d'un e-mail : celui de la coiffeuse s'il y en a un, sinon celui d'origine. */
+  const textOf = kind => ({ ...DEFAULTS[kind], ...store.mailTexts.all()[kind] });
+
+  const MESSAGES = Object.fromEntries(Object.keys(KINDS).map(kind => [kind, booking => {
+    const { subject, body } = textOf(kind);
+    return {
+      subject: fill(subject, booking),
+      lines: body.split(/\n+/).map(line => fill(line.trim(), booking)).filter(Boolean),
+      action: KINDS[kind].action,
+      ...(KINDS[kind].page && { href: () => (base(booking) ? `${base(booking)}/${KINDS[kind].page}` : '') }),
+    };
+  }]));
+
+  const SUBJECT_MAX = 150;
+  const BODY_MAX = 3000;
+
+  /** Les e-mails, pour la page « E-mails » de l'espace salon. */
+  function texts() {
+    return {
+      enabled: mailer.enabled,
+      fields: Object.keys(FIELDS),
+      kinds: Object.entries(KINDS).map(([kind, info]) => ({
+        kind, label: info.label, when: info.when, action: info.action,
+        ...textOf(kind), defaults: DEFAULTS[kind], custom: Boolean(store.mailTexts.all()[kind]),
+      })),
+    };
+  }
+
+  /** La coiffeuse réécrit un e-mail ; un texte vide, ou celui d'origine, revient au texte d'origine. */
+  function setText(input) {
+    const kind = String(input?.kind || '');
+    if (!Object.hasOwn(KINDS, kind)) return { ok: false, status: 400, error: 'E-mail inconnu.' };
+    const subject = String(input.subject ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+    const body = String(input.body ?? '').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, '').trim();
+    if (subject.length > SUBJECT_MAX) return { ok: false, status: 400, error: `L'objet est trop long (${SUBJECT_MAX} caractères au plus).` };
+    if (body.length > BODY_MAX) return { ok: false, status: 400, error: `Le texte est trop long (${BODY_MAX} caractères au plus).` };
+    const text = {
+      subject: subject || DEFAULTS[kind].subject,
+      body: body || DEFAULTS[kind].body,
+    };
+    const same = text.subject === DEFAULTS[kind].subject && text.body === DEFAULTS[kind].body;
+    store.mailTexts.set(kind, same ? null : text);
+    return { ok: true, ...texts() };
+  }
+
 
   /** Les informations pratiques, en bas de chaque e-mail. */
   function practical() {
@@ -144,7 +200,7 @@ ${info.map(([label, value]) => `<p style="margin:0 0 6px;font-size:14px"><strong
     return next;
   }
 
-  return { enabled: mailer.enabled, notify, schedule, tick, nextDue, compose };
+  return { enabled: mailer.enabled, notify, schedule, tick, nextDue, compose, texts, setText };
 }
 
 module.exports = { createMails };

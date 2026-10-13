@@ -38,6 +38,7 @@ const FILES = {
   holidays: 'jours-feries.json',
   clients: 'clients.json',
   salonDevices: 'appareils-salon.json',
+  mailTexts: 'textes-emails.json',
 };
 
 /** Le dossier des photos déposées depuis l'espace salon, dans data/. */
@@ -93,6 +94,7 @@ function createStore(target) {
     holidays: backend.read('holidays', null),
     clients: backend.read('clients', {}),
     salonDevices: backend.read('salonDevices', []),
+    mailTexts: backend.read('mailTexts', {}),
   };
   const save = key => backend.write(key, state[key]);
 
@@ -190,6 +192,15 @@ function createStore(target) {
     stats: {
       days: () => state.stats,
       save: () => save('stats'),
+    },
+    /** Le texte des e-mails aux clients, réécrit par la coiffeuse : { reminder: { subject, body }, … } (src/mails.js). */
+    mailTexts: {
+      all: () => state.mailTexts,
+      set(kind, text) {
+        if (text) state.mailTexts[kind] = text;
+        else delete state.mailTexts[kind];
+        save('mailTexts');
+      },
     },
     /** Réglages faits depuis l'espace salon : prestations, horaires, photos (voir src/settings.js). */
     settings: {

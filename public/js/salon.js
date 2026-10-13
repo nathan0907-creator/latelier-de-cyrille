@@ -8,6 +8,7 @@ import {
 } from './lib.js';
 import { createSettingsViews } from './salon-reglages.js';
 import { createClientsView } from './salon-clients.js';
+import { createMailsView } from './salon-mails.js';
 
 const root = document.querySelector('[data-salon]');
 const toastBox = document.querySelector('[data-toasts]');
@@ -501,6 +502,7 @@ const TABS = [
   { key: 'prices', label: 'Tarifs', icon: 'tag' },
   { key: 'hours', label: 'Horaires', icon: 'clock' },
   { key: 'photos', label: 'Photos', icon: 'image' },
+  { key: 'mails', label: 'E-mails', icon: 'mail' },
   { key: 'audience', label: 'Fréquentation', icon: 'eye' },
 ];
 
@@ -513,6 +515,9 @@ const settingsViews = createSettingsViews({
     renderStats();
   },
 });
+
+// Le texte des e-mails aux clients.
+const mailsView = createMailsView({ call, toast, field, view: () => refs.view, salonName: config.name, phone: config.phone });
 
 // Le fichier clients : une fiche par personne, déduite des rendez-vous.
 const clientsView = createClientsView({
@@ -582,6 +587,7 @@ const VIEWS = {
   prices: { mount: settingsViews.mountPrices, render: () => {} },
   hours: { mount: settingsViews.mountHours, render: () => {} },
   photos: { mount: settingsViews.mountPhotos, render: () => {} },
+  mails: { mount: mailsView.mount, render: () => {} },
 };
 
 function setTab(tab) {
