@@ -482,8 +482,8 @@ function appointment(site, booking) {
       ${row('Tarif', priceLabel(booking))}
       ${row('Au nom de', booking.name)}
     </dl>
-    ${cancelled && !byClient ? html`<p class="notice notice--warn" data-reveal>${config.owner || 'Le salon'} a dû annuler ce rendez-vous. Toutes nos excuses&nbsp;! Pour en prendre un autre, choisissez un créneau en ligne${phone ? html` ou appelez le salon${callUs}` : ''}.</p>` : ''}
-    ${!cancelled && !past && booking.status === 'pending' ? html`<p class="rules">${icon('clock')}<span><strong>Demande en attente de validation.</strong> En validant, ${config.owner || 'la coiffeuse'} peut ajuster l'heure dans la journée : vous serez prévenu(e). Revenez vérifier ici de temps en temps.</span></p>` : ''}
+    ${cancelled && !byClient ? html`<p class="notice notice--warn" data-reveal>${config.name} a dû annuler ce rendez-vous. Toutes nos excuses&nbsp;! Pour en prendre un autre, choisissez un créneau en ligne${phone ? html` ou appelez le salon${callUs}` : ''}.</p>` : ''}
+    ${!cancelled && !past && booking.status === 'pending' ? html`<p class="rules">${icon('clock')}<span><strong>Demande en attente de validation.</strong> En validant, ${config.name} peut ajuster l'heure dans la journée : vous serez prévenu(e). Revenez vérifier ici de temps en temps.</span></p>` : ''}
     ${!cancelled && !past && booking.attending ? html`<p class="notice notice--ok">Vous avez confirmé votre venue. À bientôt&nbsp;!</p>` : ''}
     ${!cancelled && !past ? html`
     ${config.booking.noShow ? html`<p class="rules">${icon('info')}<span><strong>${config.booking.noShow}</strong> Si vous ne pouvez pas venir, annulez ici ou prévenez le salon${callUs}.</span></p>` : ''}

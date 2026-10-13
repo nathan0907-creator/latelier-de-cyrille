@@ -24,7 +24,7 @@ function createMails({ config, store, clock, mailer, pageOf }) {
     received: booking => ({
       subject: `Votre demande de rendez-vous du ${when(booking)}`,
       lines: [`Bonjour ${firstName(booking)},`, `Votre demande de rendez-vous est bien reçue : ${booking.serviceName}, ${when(booking)}.`,
-        `${config.owner || 'Le salon'} va la valider et peut ajuster l'heure dans la journée : vous recevrez un e-mail. En attendant, revenez vérifier votre rendez-vous de temps en temps.`],
+        `${config.name} va la valider et peut ajuster l'heure dans la journée : vous recevrez un e-mail. En attendant, revenez vérifier votre rendez-vous de temps en temps.`],
       action: 'Voir ou annuler mon rendez-vous',
     }),
     confirmed: booking => ({
@@ -40,7 +40,7 @@ function createMails({ config, store, clock, mailer, pageOf }) {
     }),
     cancelled: booking => ({
       subject: `Rendez-vous annulé : ${when(booking)}`,
-      lines: [`Bonjour ${firstName(booking)},`, `${config.owner || 'Le salon'} a dû annuler votre rendez-vous du ${when(booking)}. Toutes nos excuses !`,
+      lines: [`Bonjour ${firstName(booking)},`, `${config.name} a dû annuler votre rendez-vous du ${when(booking)}. Toutes nos excuses !`,
         'Pour en prendre un autre, choisissez un créneau en ligne ou appelez le salon.'],
       action: 'Prendre un autre rendez-vous',
       href: booking => (base(booking) ? `${base(booking)}/reservation` : ''),
