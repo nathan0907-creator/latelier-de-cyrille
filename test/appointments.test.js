@@ -294,4 +294,10 @@ test('la coiffeuse rallonge, raccourcit, déplace en validant, et superpose si e
   assert.equal((await patch(zoe.id, { date: TUESDAY, time: '10:00' })).status, 409);
   assert.equal((await patch(zoe.id, { date: TUESDAY, time: '10:00', force: true })).json.booking.time, '10:00');
   assert.equal((await patch(zoe.id, { date: TUESDAY, time: '22:00', force: true })).json.code, 'slot_unavailable', 'jamais salon fermé');
+
+  // Léa, annulée puis rétablie alors que Zoé a pris sa place : seulement si on les superpose.
+  await patch(lea.id, { status: 'cancelled' });
+  await patch(zoe.id, { date: TUESDAY, time: '10:00' });
+  assert.equal((await patch(lea.id, { status: 'confirmed' })).json.code, 'slot_taken');
+  assert.equal((await patch(lea.id, { status: 'confirmed', force: true })).json.booking.status, 'confirmed');
 });

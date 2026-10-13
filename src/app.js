@@ -410,7 +410,7 @@ function createApp({
         else if (confirming) tell(booking, 'confirmed');
         return json(200, { booking });
       }
-      const result = bookings.setStatus(bookingRoute[1], body.status);
+      const result = bookings.setStatus(bookingRoute[1], body.status, { force });
       if (!result.ok) return reject(result);
       announce('updated', result.booking);
       // Le client est prévenu sur son appareil : rendez-vous validé, ou annulé par le salon.
