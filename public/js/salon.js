@@ -804,7 +804,7 @@ function renderHolidays() {
               : `Le salon sera ouvert le ${formatLong(day.date)} (${day.name}).`),
           }, h('span', {}, day.open ? 'Refermer' : 'Ouvrir ce jour-là'))) : null);
     }),
-    list.length ? null : h('p', { class: 'empty' }, 'Aucun jour férié ne tombe un jour travaillé dans les douze mois à venir.'));
+    ...(list.length ? [] : [h('p', { class: 'empty' }, 'Aucun jour férié ne tombe un jour travaillé dans les douze mois à venir.')]));
 }
 
 const usualHours = date => config.hours[weekday(date)] || [];
