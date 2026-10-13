@@ -45,7 +45,8 @@ async function main() {
     return;
   }
 
-  const app = createApp({ config, store });
+  // Les e-mails aux clients (facultatif) : BREVO_API_KEY et MAIL_FROM, voir le README.
+  const app = createApp({ config, store, mail: { apiKey: process.env.BREVO_API_KEY || '', from: process.env.MAIL_FROM || '' } });
   const server = http.createServer(app.handle);
 
   let port;

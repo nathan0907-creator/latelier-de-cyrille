@@ -38,6 +38,7 @@ function booking(site) {
     // Rappels : les échéances (en minutes) et de quoi s'abonner aux notifications.
     reminders: site.push ? site.push.leads : [],
     push: site.push ? { key: site.push.key, worker: '/sw.js' } : null,
+    mail: Boolean(site.mail),
   };
 
   const body = html`
@@ -127,6 +128,12 @@ function booking(site) {
               <p class="field-hint" id="phone-hint">Pour vous prévenir en cas d'imprévu, jamais pour de la publicité.</p>
               <p class="field-error" id="phone-error" hidden></p>
             </div>
+            ${site.mail ? html`<div class="field" data-field="email">
+              <label for="email">E-mail <span class="optional">(conseillé)</span></label>
+              <input id="email" name="email" type="email" inputmode="email" autocomplete="email" maxlength="120" aria-describedby="email-hint email-error">
+              <p class="field-hint" id="email-hint">Pour recevoir la confirmation, puis un rappel la veille avec l'adresse du salon. Jamais de publicité.</p>
+              <p class="field-error" id="email-error" hidden></p>
+            </div>` : ''}
             <div class="field" data-field="note">
               <label for="note">Un mot pour ${config.owner || 'le salon'} <span class="optional">(facultatif)</span></label>
               <textarea id="note" name="note" rows="3" maxlength="200" aria-describedby="note-hint"></textarea>
@@ -138,9 +145,11 @@ function booking(site) {
             </div>
             ${warning}
             <div class="field field--tick" data-notify-field hidden>
-              <label class="tick" for="notify"><input id="notify" name="notify" type="checkbox" checked aria-describedby="notify-hint"><span>Me prévenir par notification sur cet appareil</span></label>
-              <p class="field-hint" id="notify-hint">Quand le salon confirme le rendez-vous, puis en rappel avant de venir.</p>
+              <label class="tick" for="notify"><input id="notify" name="notify" type="checkbox" checked aria-describedby="notify-hint"><span>Me prévenir par notification sur cet appareil <strong>(fortement conseillé)</strong></span></label>
+              <p class="field-hint" id="notify-hint">Vous saurez tout de suite quand le salon confirme le rendez-vous ou en change l'heure, avec le jour et l'heure, puis un rappel avant de venir. Acceptez les notifications quand le téléphone le demande.</p>
+              <p class="notice notice--warn" data-notify-off hidden>Sans notification, vous ne serez pas prévenu(e) si ${who} change l'heure${site.mail ? ' (sauf par e-mail)' : ''}&nbsp;: pensez à revenir vérifier votre rendez-vous sur le site.</p>
             </div>
+            <p class="pay-note" data-notify-ios hidden>${icon('bell')}<span><strong>Sur iPhone, pour être prévenu(e) par notification&nbsp;:</strong> dans Safari, touchez Partager puis «&nbsp;Sur l'écran d'accueil&nbsp;», et réservez depuis cette icône.</span></p>
             <p class="notice notice--error" data-form-error role="alert" hidden></p>
             <div class="panel-actions">
               <button type="button" class="link" data-goto="2">${icon('chevron-left')} Changer de créneau</button>

@@ -1539,6 +1539,7 @@ function renderDetail({ focus = false } = {}) {
         }, '+'))),
       row('Tarif', priceText(booking)),
       booking.phone ? row('Téléphone', h('a', { class: 'link', href: telHref(booking.phone) }, booking.phone)) : null,
+      booking.email ? row('E-mail', h('a', { class: 'link', href: `mailto:${booking.email}` }, booking.email)) : null,
       booking.note ? row('Message', booking.note) : null,
       booking.cancelReason ? row("Raison de l'annulation", booking.cancelReason) : null,
       booking.attending && booking.status !== 'cancelled' ? row('Présence', 'Le client a confirmé qu\'il vient') : null,
@@ -1567,6 +1568,8 @@ function openNewBooking({ date = '', time = '', name: knownName = '', phone: kno
   name.value = knownName;
   phone.value = knownPhone;
   const note = h('input', { name: 'note', type: 'text', maxlength: '200', autocomplete: 'off' });
+  // Les e-mails aux clients en service : le client avec une adresse reçoit la confirmation et le rappel.
+  const email = config.mail ? h('input', { name: 'email', type: 'email', inputmode: 'email', maxlength: '120', autocomplete: 'off' }) : null;
   const submitLabel = h('span', {}, 'Enregistrer');
   const submit = h('button', { type: 'submit', class: 'btn', disabled: true }, submitLabel, icon('check'));
   // Une heure déjà prise reste proposée : la coiffeuse peut prendre deux clientes à la fois.
@@ -1629,6 +1632,7 @@ function openNewBooking({ date = '', time = '', name: knownName = '', phone: kno
     overlap,
     field({ id: 'nouveau-nom', label: 'Nom du client', control: name }),
     field({ id: 'nouveau-telephone', label: 'Téléphone', optional: true, control: phone }),
+    email ? field({ id: 'nouveau-email', label: 'E-mail', optional: true, hint: 'Le client reçoit la confirmation et un rappel la veille.', control: email }) : null,
     field({ id: 'nouveau-note', label: 'Note', optional: true, control: note }),
     error,
     h('div', { class: 'sheet-actions' }, submit));
@@ -1647,6 +1651,7 @@ function openNewBooking({ date = '', time = '', name: knownName = '', phone: kno
         method: 'POST',
         body: {
           serviceId: service.value, date: day.value, time: slot.value, name: name.value, phone: phone.value, note: note.value,
+          ...(email && { email: email.value }),
           force: taken.has(slot.value),
         },
       });

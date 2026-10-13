@@ -12,6 +12,8 @@ const { createStats } = require('./stats');
 const { createSettings } = require('./settings');
 const { createHolidays } = require('./holidays');
 const { createClients } = require('./clients');
+const { createMailer } = require('./mail');
+const { createMails } = require('./mails');
 const { HttpError, clientIp, isSecure, sameOrigin, readJson, applySecurityHeaders, send, sendJson, sendHtml } = require('./http');
 const views = require('./views');
 
@@ -25,12 +27,14 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
  *   assetVersion: l'empreinte des styles et des scripts, calculée à la publication ;
  *   serveStatic : les fichiers de public/, servis par Cloudflare avant d'arriver ici ;
  *   live        : les réglages du direct (src/events.js).
- * sendPush ne se donne que dans les tests : de quoi envoyer une notification sans passer par Internet.
+ *   mail        : { apiKey, from } pour les e-mails aux clients (src/mail.js, Brevo) ; sans clé, pas d'e-mail.
+ * sendPush et mailer ne se donnent que dans les tests : de quoi envoyer une notification ou un
+ * e-mail sans passer par Internet.
  */
 function createApp({
   config: base, store, clock = () => nowInZone(base.timezone),
   setupCode, timers = true, assetVersion = createVersion(base.publicDir), serveStatic = createStatic(base.publicDir), live = {},
-  sendPush,
+  sendPush, mail = {}, mailer: givenMailer,
 }) {
   // La configuration « vivante » : salon.config.js, plus ce que la coiffeuse a réglé depuis son espace.
   const settings = createSettings({ base, store });
@@ -39,12 +43,21 @@ function createApp({
   const holidays = createHolidays({ config, store, clock });
   const clients = createClients({ store });
   const closedDays = () => holidays.closures();
-  const bookings = createBookings({ config, store, clock, closures: closedDays });
+  const mailer = givenMailer || createMailer({
+    apiKey: mail.apiKey, from: mail.from || config.contact.email, name: config.name, replyTo: config.contact.email,
+  });
+  const bookings = createBookings({ config, store, clock, closures: closedDays, acceptEmail: mailer.enabled });
   const reminders = createReminders({ config, store, clock, ...(sendPush && { send: sendPush }) });
-  // Les nouvelles du salon partent sans faire attendre la coiffeuse ; un envoi raté ne casse rien.
-  const tell = (booking, kind) => {
-    reminders.notify(booking, kind).catch(err => console.error('[notifications]', err));
-  };
+  const mails = createMails({ config, store, clock, mailer, pageOf: reminders.pageOf });
+  /**
+   * Les nouvelles du salon au client : notification sur ses appareils, e-mail s'il a laissé son
+   * adresse. Attendues avant de répondre (sur Cloudflare, un envoi laissé en route peut être
+   * coupé) ; un envoi raté ne casse rien.
+   */
+  const tell = (booking, kind) => Promise.all([
+    kind === 'received' ? 0 : reminders.notify(booking, kind).catch(err => console.error('[notifications]', err)),
+    mails.notify(booking, kind).catch(err => console.error('[e-mails]', err)),
+  ]);
   /**
    * Alerte sur le téléphone de la coiffeuse, même quand son espace est fermé. Attendue avant de
    * répondre : sur Cloudflare, un envoi laissé en route peut être coupé une fois la réponse partie.
@@ -111,6 +124,8 @@ function createApp({
       nextDays: pathname === '/' ? availability.nextOpenDays({ ...state, service: quickestService() }) : [],
       // Rappels par notification : la clé publique du serveur et les échéances proposées.
       push: { key: reminders.publicKey, leads: reminders.leads, labels: reminders.labels },
+      // Les e-mails aux clients sont-ils en service (clé Brevo donnée) ?
+      mail: mailer.enabled,
     };
   }
 
@@ -170,9 +185,11 @@ function createApp({
       const body = await readJson(req);
       // Champ piège invisible : seuls les robots le remplissent.
       if (cleanText(body.website, 50)) return json(400, { error: 'Requête refusée.' });
-      const result = bookings.create(body, { mode: 'public' });
+      const result = bookings.create(body, { mode: 'public', site: originOf(req) });
       if (!result.ok) return reject(result);
       announce('created', result.booking);
+      mails.schedule(result.booking);
+      await tell(result.booking, 'received');
       await alertSalon({ title: 'Nouvelle demande de rendez-vous', body: `${result.booking.name} · ${result.booking.serviceName} · ${whenOf(result.booking)}`, tag: `demande-${result.booking.id}` });
       stats.booking();
       // « reminder » : la référence qui permet à ce client, et à lui seul, de demander un rappel.
@@ -384,9 +401,12 @@ function createApp({
     }
 
     if (route === 'POST /api/salon/bookings') {
-      const result = bookings.create(await readJson(req), { mode: 'salon' });
+      const result = bookings.create(await readJson(req), { mode: 'salon', site: originOf(req) });
       if (!result.ok) return reject(result);
       announce('created', result.booking);
+      // Saisi au salon, donc déjà confirmé : le client avec une adresse e-mail le reçoit.
+      mails.schedule(result.booking);
+      await tell(result.booking, 'confirmed');
       return json(201, { booking: result.booking });
     }
 
@@ -415,21 +435,22 @@ function createApp({
         const moved = bookings.move(bookingRoute[1], { date: body.date, time: body.time, force });
         if (!moved.ok) return reject(moved);
         reminders.reschedule(moved.booking);
+        mails.schedule(moved.booking);
         events.send('public', 'slots', { date: moved.from.date });
         const confirming = body.status === 'confirmed' && moved.booking.status === 'pending';
         const booking = confirming ? bookings.setStatus(moved.booking.id, 'confirmed').booking : moved.booking;
         announce('updated', booking);
         const changed = moved.from.date !== booking.date || moved.from.time !== booking.time;
-        if (changed) tell(booking, 'moved');
-        else if (confirming) tell(booking, 'confirmed');
+        if (changed) await tell(booking, 'moved');
+        else if (confirming) await tell(booking, 'confirmed');
         return json(200, { booking });
       }
       const result = bookings.setStatus(bookingRoute[1], body.status, { force });
       if (!result.ok) return reject(result);
       announce('updated', result.booking);
       // Le client est prévenu sur son appareil : rendez-vous validé, ou annulé par le salon.
-      if (result.booking.status === 'confirmed' && result.previous === 'pending') tell(result.booking, 'confirmed');
-      if (result.booking.status === 'cancelled' && result.previous !== 'cancelled') tell(result.booking, 'cancelled');
+      if (result.booking.status === 'confirmed' && result.previous === 'pending') await tell(result.booking, 'confirmed');
+      if (result.booking.status === 'cancelled' && result.previous !== 'cancelled') await tell(result.booking, 'cancelled');
       return json(200, { booking: result.booking });
     }
     if (bookingRoute && method === 'DELETE') {
@@ -632,11 +653,22 @@ function createApp({
     Object.values(limits).forEach(limiter => limiter.sweep());
   }
 
+  /** Les rappels arrivés à échéance : notifications, puis e-mails de la veille. */
+  async function tick() {
+    return (await reminders.tick()) + (await mails.tick());
+  }
+
+  /** Dans combien de minutes un rappel (notification ou e-mail) doit partir, ou null. */
+  function nextDue() {
+    const dues = [reminders.nextDue(), mails.nextDue()].filter(due => due !== null);
+    return dues.length ? Math.min(...dues) : null;
+  }
+
   bookings.purgeOld();
   // Toutes les heures : l'entretien. Chaque minute : les rappels arrivés à échéance partent.
   const housekeeping = timers ? setInterval(maintain, 60 * 60_000) : null;
   const reminding = timers ? setInterval(() => {
-    reminders.tick().catch(err => console.error('[rappels]', err));
+    tick().catch(err => console.error('[rappels]', err));
   }, 60_000) : null;
   housekeeping?.unref();
   reminding?.unref();
@@ -648,7 +680,7 @@ function createApp({
     events.close();
   }
 
-  return { handle, close, maintain, auth, events, reminders, stats, settings, holidays, clients, config };
+  return { handle, close, maintain, tick, nextDue, auth, events, reminders, mails, stats, settings, holidays, clients, config };
 }
 
 module.exports = { createApp };

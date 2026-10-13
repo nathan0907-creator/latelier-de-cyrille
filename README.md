@@ -215,7 +215,18 @@ Dans le Worker : **Settings** → **Variables and Secrets** → **Add** : type *
 3. Dans `salon.config.js`, renseigner `siteUrl` (par exemple `https://www.latelier-de-cyrille.fr`) et compléter les mentions légales (forme juridique, SIRET ; l'hébergeur, Cloudflare, est déjà indiqué).
 4. Envoyer ces modifications sur `main` : Cloudflare republie le site sur le nom de domaine, avec son certificat HTTPS. Toute visite en `http://` ou sans `www.` est renvoyée vers `siteUrl`.
 
-### 5. Un site d'essai
+### 5. Les e-mails aux clients (facultatif)
+
+Avec une adresse e-mail laissée en réservant (case « E-mail (conseillé) »), le client reçoit : la demande bien reçue, le rendez-vous confirmé, déplacé ou annulé par le salon, et la veille un « N'oubliez pas votre rendez-vous », chacun avec les informations pratiques en bas (adresse, téléphone, itinéraire). Les e-mails partent par **Brevo**, un service français, gratuit jusqu'à 300 e-mails par jour. Sans ces réglages, le site ne demande pas d'e-mail.
+
+1. Créer un compte sur https://www.brevo.com (offre gratuite).
+2. **Expéditeurs, domaines** : ajouter l'adresse d'expédition et la valider. L'idéal : une adresse du nom de domaine du salon (par exemple `rendez-vous@latelier-de-cyrille.fr`), et dans Brevo « Authentifier le domaine » (Brevo donne les lignes à ajouter dans le DNS de Cloudflare) : les e-mails n'arrivent alors pas dans les indésirables.
+3. **SMTP et API** → **Clés API** → créer une clé.
+4. Dans le Worker sur Cloudflare : **Settings** → **Variables and Secrets** : un secret `BREVO_API_KEY` (la clé), et un secret `MAIL_FROM` (l'adresse d'expédition validée). Sur l'ordinateur du salon, les mêmes noms en variables d'environnement.
+
+Les réponses des clients vont à l'adresse e-mail du salon, si elle est renseignée dans `salon.config.js` (`contact.email`).
+
+### 6. Un site d'essai
 
 Un second site, `latelier-de-cyrille-essai`, pour tout essayer (réserver, annuler, valider, recevoir les alertes) sans toucher au vrai : ses rendez-vous, son compte et ses alertes sont à part. Son nom porte « (site d'essai) » et il n'apparaît pas sur Google.
 

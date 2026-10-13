@@ -53,6 +53,8 @@ const el = {
   remindLabel: $('[data-remind-label]'),
   remindNote: $('[data-remind-note]'),
   notifyField: $('[data-notify-field]'),
+  notifyOff: $('[data-notify-off]'),
+  notifyIos: $('[data-notify-ios]'),
   manage: $('[data-manage]'),
   mine: $('[data-mine]'),
   mineCancelled: $('[data-mine-cancelled]'),
@@ -370,6 +372,8 @@ function hideNotice() {
 const validators = {
   name: value => (/^\p{L}[\p{L}\p{M}'’ .-]{1,59}$/u.test(value.trim()) ? '' : 'Indiquez votre prénom et votre nom.'),
   phone: value => (/^\+?\d{9,15}$/.test(value.replace(/[\s.\-()]/g, '')) ? '' : 'Indiquez un numéro valide, par exemple 06 12 34 56 78.'),
+  // Facultatif, et seulement quand le salon envoie des e-mails.
+  ...(data.mail && { email: value => (!value.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()) ? '' : 'Indiquez une adresse e-mail valide, par exemple prenom.nom@gmail.com.') }),
 };
 
 function setFieldError(name, message) {
@@ -441,6 +445,7 @@ el.form.addEventListener('submit', async event => {
         name: fields.name.value,
         phone: fields.phone.value,
         note: fields.note.value,
+        ...(fields.email && { email: fields.email.value }),
         website: fields.website.value,
       },
     });
@@ -727,6 +732,9 @@ if (/^\d{4}-\d{2}-\d{2}$/.test(presetDate) && presetDate >= (data.firstDate || d
 
 // La case « Me prévenir » n'a de sens que sur un appareil qui sait recevoir des notifications.
 el.notifyField.hidden = !canRemind;
+// Case décochée : on rappelle ce que le client manque. iPhone sans l'icône du site : comment faire.
+el.form.elements.notify.addEventListener('change', event => { el.notifyOff.hidden = event.target.checked; });
+el.notifyIos.hidden = canRemind || !(/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 showMine();
 refreshMine();
 

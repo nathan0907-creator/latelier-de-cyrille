@@ -14,6 +14,7 @@ function salon(site) {
     slotStep: config.booking.slotStep,
     // Les alertes sur l'appareil de la coiffeuse (nouvelle demande, annulation), même page fermée.
     push: site.push ? { key: site.push.key, worker: '/sw.js' } : null,
+    mail: Boolean(site.mail),
   };
 
   const body = html`
