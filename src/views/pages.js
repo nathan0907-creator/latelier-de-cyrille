@@ -390,7 +390,7 @@ function terms(site) {
       <h2>La réservation</h2>
       <p>${rules.appointmentOnly ? html`<strong>${rules.appointmentOnly}.</strong> ` : ''}Vous choisissez une prestation, un jour et une heure parmi les créneaux libres, puis vous laissez votre nom et votre numéro de téléphone. Le rendez-vous est enregistré quand la page de confirmation s'affiche.${rules.dayBefore ? ' En ligne, on réserve au plus tard la veille.' : ''}</p>
       <p>Indiquez votre vrai nom et un numéro où vous joindre&nbsp;: le salon s'en sert pour vous prévenir en cas d'imprévu. Un même numéro peut avoir jusqu'à ${rules.maxActivePerPhone} rendez-vous à venir&nbsp;; au-delà, appelez le salon.</p>
-      <p>Le salon peut être amené à déplacer ou annuler un rendez-vous (maladie, fermeture exceptionnelle). Vous êtes alors prévenu par téléphone.</p>
+      <p>Le salon peut être amené à déplacer ou annuler un rendez-vous (maladie, fermeture exceptionnelle). Vous êtes alors prévenu par notification si vous les avez acceptées, sinon par SMS ou par téléphone, et votre page «&nbsp;Votre rendez-vous&nbsp;» l'indique.</p>
     </section>
     <section id="absence">
       <h2>Empêchement et rendez-vous manqué</h2>
@@ -461,13 +461,15 @@ function appointment(site, booking) {
   const past = booking.date < now.date || (booking.date === now.date && start <= now.minutes);
   const cancelled = booking.status === 'cancelled';
   const status = APPOINTMENT_STATUS[booking.status] || APPOINTMENT_STATUS.pending;
+  const byClient = cancelled && booking.cancelledBy === 'client';
+  const statusLabel = !cancelled ? (past ? 'Rendez-vous passé' : status.label) : byClient ? 'Vous avez annulé ce rendez-vous' : 'Annulé par le salon';
   const row = (label, value) => html`<div><dt>${label}</dt><dd>${value}</dd></div>`;
   const body = html`
 <main id="contenu" class="page" data-appointment>
   <header class="page-head container">
     ${kicker('Votre rendez-vous')}
     <h1 class="headline headline--xl" data-reveal="lines">${splitTitle([`${formatLong(booking.date)}`, `_à ${frTime(start)}_`])}</h1>
-    <p class="notice-line appointment-status appointment-status--${booking.status}" data-reveal>${icon(status.icon)}<span>${past && !cancelled ? 'Rendez-vous passé' : status.label}</span></p>
+    <p class="notice-line appointment-status appointment-status--${booking.status}" data-reveal>${icon(status.icon)}<span>${statusLabel}</span></p>
   </header>
   <div class="container appointment">
     <dl class="done-recap" data-reveal>
@@ -478,6 +480,7 @@ function appointment(site, booking) {
       ${row('Tarif', priceLabel(booking))}
       ${row('Au nom de', booking.name)}
     </dl>
+    ${cancelled && !byClient ? html`<p class="notice notice--warn" data-reveal>${config.owner || 'Le salon'} a dû annuler ce rendez-vous. Toutes nos excuses&nbsp;! Pour en prendre un autre, choisissez un créneau en ligne${phone ? html` ou appelez le salon${callUs}` : ''}.</p>` : ''}
     ${!cancelled && !past && booking.status === 'pending' ? html`<p class="rules">${icon('clock')}<span><strong>Demande en attente de validation.</strong> En validant, ${config.owner || 'la coiffeuse'} peut ajuster l'heure dans la journée : vous serez prévenu(e). Revenez vérifier ici de temps en temps.</span></p>` : ''}
     ${!cancelled && !past && booking.attending ? html`<p class="notice notice--ok">Vous avez confirmé votre venue. À bientôt&nbsp;!</p>` : ''}
     ${!cancelled && !past ? html`
@@ -506,10 +509,11 @@ function appointment(site, booking) {
   return layout(site, {
     title: 'Votre rendez-vous',
     body,
-    data: { ref: booking.ref },
+    // La page se met à jour si le salon change le rendez-vous pendant qu'elle est ouverte.
+    data: { ref: booking.ref, state: `${booking.status} ${booking.date} ${booking.time}` },
     noindex: true,
     styles: ['/css/pages.css', '/css/booking.css'],
-    scripts: cancelled || past ? [] : ['/js/rendez-vous.js'],
+    scripts: past ? [] : ['/js/rendez-vous.js'],
   });
 }
 

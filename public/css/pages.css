@@ -850,6 +850,17 @@
   color: var(--gold);
 }
 
+/* Un rendez-vous annulé par le salon, lu en haut de la page de réservation. */
+.notice-line--warn {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.notice-line--warn .icon {
+  color: var(--danger);
+}
+
 .menu {
   display: grid;
   gap: clamp(2.25rem, 5vw, 3.75rem);

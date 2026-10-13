@@ -55,6 +55,7 @@ const el = {
   notifyField: $('[data-notify-field]'),
   manage: $('[data-manage]'),
   mine: $('[data-mine]'),
+  mineCancelled: $('[data-mine-cancelled]'),
 };
 
 const panel = step => $(`[data-step="${step}"]`);
@@ -500,6 +501,44 @@ function showMine() {
   el.mine.querySelector('[data-mine-link]').href = manageUrl(next.ref);
 }
 
+/**
+ * Les rendez-vous gardés sur cet appareil, relus auprès du salon : un rendez-vous déplacé prend sa
+ * nouvelle heure ; un rendez-vous annulé par le salon disparaît, et le client le lit en haut de page.
+ */
+async function refreshMine() {
+  const saved = myBookings();
+  if (!saved.length) return;
+  let answer;
+  try {
+    answer = await api('/api/bookings/mine', { method: 'POST', body: { refs: saved.map(item => item.ref) } });
+  } catch {
+    return; // hors ligne : on garde ce qu'on sait
+  }
+  const cancelled = [];
+  const kept = [];
+  for (const item of saved) {
+    const found = answer.bookings.find(entry => entry.ref === item.ref)?.booking;
+    if (!found) continue; // effacé par le salon
+    if (found.status === 'cancelled') {
+      if (found.cancelledBy !== 'client') cancelled.push({ ...item, date: found.date, time: found.time });
+      continue;
+    }
+    kept.push({ ref: item.ref, date: found.date, time: found.time });
+  }
+  try {
+    localStorage.setItem(MINE_KEY, JSON.stringify(kept.sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`))));
+  } catch {
+    // Stockage indisponible.
+  }
+  showMine();
+  el.mineCancelled.hidden = !cancelled.length;
+  if (cancelled.length) {
+    const [first] = cancelled;
+    el.mineCancelled.querySelector('[data-mine-cancelled-text]').textContent = `Le salon a dû annuler votre rendez-vous ${formatLong(first.date)} à ${frTime(first.time)}. Choisissez un autre créneau ci-dessous.`;
+    el.mineCancelled.querySelector('[data-mine-cancelled-link]').href = manageUrl(first.ref);
+  }
+}
+
 function showConfirmation(booking, reminder) {
   state.confirmed = booking;
   state.manage = reminder?.ref ? manageUrl(reminder.ref) : '';
@@ -689,6 +728,7 @@ if (/^\d{4}-\d{2}-\d{2}$/.test(presetDate) && presetDate >= (data.firstDate || d
 // La case « Me prévenir » n'a de sens que sur un appareil qui sait recevoir des notifications.
 el.notifyField.hidden = !canRemind;
 showMine();
+refreshMine();
 
 renderStepper();
 renderCalendar();

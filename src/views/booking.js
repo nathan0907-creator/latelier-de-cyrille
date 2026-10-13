@@ -49,6 +49,7 @@ function booking(site) {
       <h1 class="headline headline--xl" data-reveal="lines">${splitTitle(['Prendre', '_rendez-vous_'])}</h1>
       <p class="live-pill" data-reveal><span class="dot" aria-hidden="true"></span>Créneaux à jour en direct</p>
       <p class="notice-line" data-mine hidden>${icon('calendar')}<span data-mine-text></span><a class="link" data-mine-link>Revoir ou annuler</a></p>
+      <p class="notice-line notice-line--warn" data-mine-cancelled role="status" hidden>${icon('ban')}<span data-mine-cancelled-text></span><a class="link" data-mine-cancelled-link>Voir</a></p>
       ${(site.closures || []).slice(0, 1).map(period => {
         const notice = closureWording(period);
         return html`<p class="notice-line" data-reveal>${icon('calendar')}<span>${notice.closed}.${notice.reopening ? ` ${notice.reopening}.` : ''}</span></p>`;
