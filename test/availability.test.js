@@ -141,6 +141,10 @@ test("un jour particulier : quelques heures bloquées, ou d'autres horaires ce j
 test('horaires particuliers : vérifiés avant d\'être enregistrés', () => {
   assert.deepEqual(readDayHours([{ start: '14:00', end: '18:00' }, { start: '09:30', end: '12:00' }], 30),
     { hours: [{ start: 570, end: 720 }, { start: 840, end: 1080 }] });
+  // Le planning du jour peut découper la journée en plusieurs plages (une heure fermée ici et là).
+  const pieces = ['09:30-11:00', '11:30-12:00', '13:00-15:00', '15:30-18:00'].map(text => ({ start: text.slice(0, 5), end: text.slice(6) }));
+  assert.equal(readDayHours(pieces, 30).hours.length, 4);
+  assert.ok(readDayHours(Array.from({ length: 9 }, (_, i) => ({ start: `${10 + i}:00`, end: `${10 + i}:30` })), 30).error, 'neuf plages : trop');
   for (const input of [[], '09:00', [{ start: '12:00', end: '10:00' }], [{ start: '09:15', end: '10:00' }],
     [{ start: '09:00', end: '12:00' }, { start: '11:00', end: '13:00' }], [{ start: '9h', end: '10:00' }], [{}, {}, {}, {}]]) {
     assert.ok(readDayHours(input, 30).error, JSON.stringify(input));

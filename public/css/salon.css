@@ -937,6 +937,87 @@
   padding: 0 .9rem .9rem;
 }
 
+/* ── Planning d'un jour (Fermetures) : une ligne par demi-heure ──────────── */
+
+.day-plan-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.day-plan {
+  display: grid;
+  max-height: 22rem;
+  overflow-y: auto;
+  border: 1px solid var(--hair);
+  background: var(--white);
+}
+
+.day-plan-row {
+  display: grid;
+  grid-template-columns: 3.4rem 4.6rem 1fr;
+  align-items: center;
+  gap: .5rem;
+  min-height: 2.6rem;
+  padding: .3rem .7rem;
+  border: 0;
+  border-bottom: 1px solid var(--hair);
+  background: var(--paper-2);
+  color: var(--muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.day-plan-row:last-child {
+  border-bottom: 0;
+}
+
+.day-plan-row.is-open {
+  background: var(--ok-soft);
+  color: var(--ink);
+}
+
+/* Changé par rapport aux horaires habituels : un liseré doré. */
+.day-plan-row.is-changed {
+  box-shadow: inset 4px 0 0 var(--gold-bright);
+}
+
+.day-plan-time {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.day-plan-state {
+  font-family: var(--font-label);
+  font-size: .8rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.day-plan-row.is-open .day-plan-state {
+  color: var(--ok);
+}
+
+.day-plan-who {
+  overflow: hidden;
+  font-size: .9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Un rendez-vous sur une heure fermée : à voir tout de suite. */
+.day-plan-row.is-busy:not(.is-open) .day-plan-who {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.day-plan-summary {
+  margin: 0;
+  font-weight: 700;
+}
+
 /* ── Fenêtres (détail, nouveau rendez-vous, mot de passe) ──────────────── */
 
 .sheet {

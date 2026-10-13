@@ -24,7 +24,7 @@ const isFullClosure = closure => !closure.hours;
  * Renvoie { hours } (en minutes, dans l'ordre) ou { error }.
  */
 function readDayHours(input, slotStep) {
-  if (!Array.isArray(input) || !input.length || input.length > 3) return { error: 'Indiquez une à trois plages horaires.' };
+  if (!Array.isArray(input) || !input.length || input.length > 8) return { error: 'Indiquez une à huit plages horaires.' };
   const hours = input.map(range => ({ start: toMinutes(range?.start), end: toMinutes(range?.end) }));
   if (hours.some(range => range.start === null || range.end === null)) return { error: 'Heure invalide.' };
   if (hours.some(range => range.end <= range.start)) return { error: "L'heure de fermeture doit suivre l'heure d'ouverture." };
