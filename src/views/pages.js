@@ -8,7 +8,7 @@ const {
   priceTable, telHref, ratioClass, fullSize, houseRules, euros, priceLabel, durationLabel,
 } = require('./components');
 
-const { formatLong, frTime, toMinutes } = require('../time');
+const { formatLong, frTime, toMinutes, daysBetween } = require('../time');
 
 const pageOf = path => PAGES.find(page => page.path === path);
 
@@ -332,6 +332,7 @@ function privacy(site) {
       <h2>Ce qui est enregistré, et pourquoi</h2>
       <h3>Quand vous réservez</h3>
       <p>Votre nom, votre numéro de téléphone, la prestation, la date et l'heure du rendez-vous, et le message que vous choisissez d'ajouter. Ces informations servent uniquement à organiser le rendez-vous que vous demandez et à vous prévenir en cas d'imprévu (mesures prises à votre demande avant la prestation, article 6.1.b du RGPD).</p>
+      <p>Un rendez-vous non honoré, ou annulé moins de ${config.booking.lateCancelMinutes % 60 ? `${config.booking.lateCancelMinutes} min` : `${config.booking.lateCancelMinutes / 60} h`} avant, est noté sur votre fiche («&nbsp;ne plus reprendre&nbsp;»)&nbsp;: la réservation en ligne n'est alors plus possible avec votre numéro. Cette mention est gardée jusqu'à ce que le salon la retire (intérêt légitime du salon à organiser son agenda, article 6.1.f du RGPD)&nbsp;; vous pouvez en demander le retrait en contactant le salon.</p>
       <p>Vos rendez-vous forment votre fiche au salon. La coiffeuse peut y ajouter une note utile pour vous recevoir la fois suivante (une formule de couleur, par exemple). Cette fiche n'est vue que par elle et s'efface avec vos rendez-vous.</p>
       ${site.mail ? html`<h3>Si vous laissez votre e-mail</h3>
       <p>L'adresse e-mail est facultative. Elle sert uniquement à vous écrire au sujet de votre rendez-vous&nbsp;: demande reçue, rendez-vous confirmé, déplacé ou annulé par le salon, et un rappel la veille. Jamais de publicité. Les e-mails partent par Brevo (Sendinblue SAS, entreprise française), qui ne s'en sert pour rien d'autre. L'adresse s'efface avec vos rendez-vous.</p>` : ''}
@@ -398,6 +399,7 @@ function terms(site) {
       <h2>Empêchement et rendez-vous manqué</h2>
       <p>Un empêchement&nbsp;? Annulez votre rendez-vous depuis le lien «&nbsp;Revoir ou annuler ce rendez-vous&nbsp;» reçu à la réservation, ou prévenez le salon le plus tôt possible au ${phone}${contact.messenger ? html` ou sur <a class="link" href="${contact.messenger}" target="_blank" rel="noopener">Messenger</a>` : ''}, pour que le créneau serve à quelqu'un d'autre.</p>
       ${rules.noShow ? html`<p><strong>${rules.noShow}</strong></p>` : ''}
+      <p>Annuler moins de ${rules.lateCancelMinutes % 60 ? `${rules.lateCancelMinutes} min` : `${rules.lateCancelMinutes / 60} h`} avant le rendez-vous compte comme un rendez-vous non honoré&nbsp;: le site vous en avertit avant que vous confirmiez l'annulation. La réservation en ligne n'est ensuite plus possible avec votre numéro&nbsp;; pour un vrai imprévu, appelez le salon.</p>
     </section>
     <section>
       <h2>Les tarifs</h2>
@@ -461,6 +463,11 @@ function appointment(site, booking) {
 
   const start = toMinutes(booking.time);
   const past = booking.date < now.date || (booking.date === now.date && start <= now.minutes);
+  // Annuler moins de lateCancelMinutes avant compte comme un rendez-vous non honoré : le client en
+  // est averti avant de confirmer (la page tient le compte si elle reste ouverte, rendez-vous.js).
+  const minutesLeft = daysBetween(now.date, booking.date) * 1440 + start - now.minutes;
+  const lateCancel = config.booking.lateCancelMinutes;
+  const lateIn = Math.max(0, minutesLeft - lateCancel);
   const cancelled = booking.status === 'cancelled';
   const status = APPOINTMENT_STATUS[booking.status] || APPOINTMENT_STATUS.pending;
   const byClient = cancelled && booking.cancelledBy === 'client';
@@ -491,11 +498,12 @@ function appointment(site, booking) {
       <button type="button" class="btn btn--outline" data-cancel-ask><span>Annuler ce rendez-vous</span>${icon('ban')}</button>
       <div class="appointment-confirm" data-cancel-confirm hidden>
         <p class="appointment-question">Annuler ce rendez-vous&nbsp;? Le créneau sera proposé à quelqu'un d'autre.</p>
+        <p class="notice notice--error" data-cancel-late${lateIn > 0 ? ' hidden' : ''}><strong>Attention&nbsp;: vous annulez moins de ${lateCancel % 60 ? `${lateCancel} min` : `${lateCancel / 60} h`} avant votre rendez-vous.</strong> Une annulation de dernière minute compte comme un rendez-vous non honoré&nbsp;: ${config.name} ne pourra plus vous reprendre, et c'est noté définitivement sur votre fiche au salon.${phone ? html` Un vrai imprévu&nbsp;? Appelez plutôt le salon${callUs}.` : ''}</p>
         <div class="field">
           <label for="annulation-raison">Pourquoi annulez-vous&nbsp;?</label>
           <textarea id="annulation-raison" maxlength="200" rows="2" placeholder="Un empêchement, un imprévu…" data-cancel-reason></textarea>
         </div>
-        <button type="button" class="btn btn--danger" data-cancel-yes><span>Oui, annuler</span></button>
+        <button type="button" class="btn btn--danger" data-cancel-yes><span>${lateIn > 0 ? 'Oui, annuler' : 'Annuler quand même'}</span></button>
         <button type="button" class="btn btn--outline" data-cancel-no><span>Non, le garder</span></button>
       </div>
       <p class="notice notice--error" data-cancel-error role="alert" hidden></p>
@@ -512,7 +520,7 @@ function appointment(site, booking) {
     title: 'Votre rendez-vous',
     body,
     // La page se met à jour si le salon change le rendez-vous pendant qu'elle est ouverte.
-    data: { ref: booking.ref, state: `${booking.status} ${booking.date} ${booking.time}` },
+    data: { ref: booking.ref, state: `${booking.status} ${booking.date} ${booking.time}`, lateIn },
     noindex: true,
     styles: ['/css/pages.css', '/css/booking.css'],
     scripts: past ? [] : ['/js/rendez-vous.js'],

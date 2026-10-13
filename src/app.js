@@ -46,7 +46,7 @@ function createApp({
   const mailer = givenMailer || createMailer({
     apiKey: mail.apiKey, from: mail.from || config.contact.email, name: config.name, replyTo: config.contact.email,
   });
-  const bookings = createBookings({ config, store, clock, closures: closedDays, acceptEmail: mailer.enabled });
+  const bookings = createBookings({ config, store, clock, closures: closedDays, acceptEmail: mailer.enabled, isBlocked: clients.isBlocked });
   const reminders = createReminders({ config, store, clock, ...(sendPush && { send: sendPush }) });
   const mails = createMails({ config, store, clock, mailer, pageOf: reminders.pageOf });
   /**
@@ -207,9 +207,12 @@ function createApp({
       if (!result.ok) return reject(result);
       reminders.forget(result.booking.id);
       announce('updated', result.booking);
+      // Annulation de dernière minute : la fiche du client passe en « ne plus reprendre ».
+      const late = Boolean(result.booking.lateCancel);
+      if (late) events.send('salon', 'clients', { clients: clients.mark(result.booking, `Annulation de dernière minute (${whenOf(result.booking)})`) });
       await alertSalon({
-        title: 'Rendez-vous annulé par le client',
-        body: `${result.booking.name} · ${whenOf(result.booking)} · Raison : ${result.booking.cancelReason}`,
+        title: late ? 'Annulation de dernière minute' : 'Rendez-vous annulé par le client',
+        body: `${result.booking.name} · ${whenOf(result.booking)} · Raison : ${result.booking.cancelReason}${late ? ' · Fiche marquée « Ne plus reprendre »' : ''}`,
         tag: `annulation-${result.booking.id}`,
       });
       return json(200, { booking: bookings.publicView(result.booking) });
@@ -422,6 +425,14 @@ function createApp({
     if (bookingRoute && method === 'PATCH') {
       const body = await readJson(req);
       const force = body.force === true;
+      // Le client n'est pas venu : noté sur le rendez-vous, et sa fiche passe en « ne plus reprendre ».
+      if (body.noShow === true) {
+        const result = bookings.markNoShow(bookingRoute[1]);
+        if (!result.ok) return reject(result);
+        events.send('salon', 'clients', { clients: clients.mark(result.booking, `Rendez-vous non honoré (${whenOf(result.booking)})`) });
+        announce('updated', result.booking);
+        return json(200, { booking: result.booking });
+      }
       // Une nouvelle durée : le rendez-vous est rallongé ou raccourci.
       if (body.duration !== undefined) {
         const resized = bookings.resize(bookingRoute[1], Number(body.duration), { force });

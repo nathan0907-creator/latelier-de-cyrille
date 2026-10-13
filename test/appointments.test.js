@@ -150,6 +150,8 @@ test('annulation par le client : le créneau se libère, le salon est prévenu e
 
   const [saved] = (await site.call('GET', '/api/salon/data')).json.bookings;
   assert.deepEqual([saved.status, saved.cancelledBy, saved.cancelReason], ['cancelled', 'client', 'Enfant malade'], "l'espace salon sait qui a annulé, et pourquoi");
+  assert.equal(saved.lateCancel, undefined, 'annulé la veille : pas de dernière minute');
+  assert.deepEqual((await site.call('GET', '/api/salon/data')).json.clients, {}, 'fiche non marquée');
   assert.equal((await site.request('POST', '/api/bookings/cancel', { body: { ref, reason: 'Encore' } })).status, 409, 'déjà annulé');
 
   const page = (await site.request('GET', `/rendez-vous?r=${ref}`)).text;
@@ -390,4 +392,54 @@ test('e-mails : la demande envoyée à Brevo', async () => {
     replyTo: { email: 'salon@exemple.fr' }, subject: 'Sujet', textContent: 'Texte', htmlContent: '<p>Texte</p>',
   });
   assert.deepEqual(['a@b.fr', 'A.B+c@d.co.uk', 'pas une adresse', 'a@b', '<a@b.fr>'].map(readEmail), ['a@b.fr', 'a.b+c@d.co.uk', '', '', '']);
+});
+
+test('annulation de dernière minute : averti avant, fiche marquée, plus de réservation en ligne', async t => {
+  let now = { date: MONDAY, minutes: 600 };
+  const site = await salon({ clock: () => now });
+  t.after(site.stop);
+  const { ref } = (await site.request('POST', '/api/bookings', { body: booking() })).json.reminder; // mardi 10h
+  const page = () => site.request('GET', `/rendez-vous?r=${encodeURIComponent(ref)}`).then(r => r.text);
+
+  // La veille : l'avertissement est prêt mais caché (la page le montre si elle reste ouverte jusque-là).
+  assert.match(await page(), /<p class="notice notice--error" data-cancel-late hidden>/);
+  assert.match(await page(), /"lateIn":1320/);
+  // Mardi 8h30, 1 h 30 avant : averti avant de confirmer.
+  now = { date: TUESDAY, minutes: 510 };
+  const late = await page();
+  assert.match(late, /<p class="notice notice--error" data-cancel-late><strong>Attention&nbsp;: vous annulez moins de 2 h avant/);
+  assert.match(late, /Annuler quand même/);
+
+  await site.request('POST', '/api/bookings/cancel', { body: { ref, reason: 'Panne de réveil' } });
+  await site.settle();
+  const data = (await site.call('GET', '/api/salon/data')).json;
+  assert.equal(data.bookings[0].lateCancel, true);
+  const record = data.clients['tel:0612345678'];
+  assert.equal(record.blocked, true);
+  assert.match(record.reason, /^Annulation de dernière minute \(mar\. 13 oct\. à 10h\)$/);
+
+  // Plus de réservation en ligne avec ce numéro (même écrit autrement) ; le salon peut toujours la saisir.
+  const again = await site.request('POST', '/api/bookings', { body: booking({ date: '2026-10-15', phone: '06 12 34 56 78' }) });
+  assert.deepEqual([again.status, again.json.code], [403, 'blocked']);
+  assert.match(again.json.error, /Appelez le salon au 01 99 00 00 00/);
+  assert.equal((await site.call('POST', '/api/salon/bookings', booking({ date: '2026-10-15' }))).status, 201);
+
+  // Gardé même quand ses rendez-vous sont effacés ; la coiffeuse peut le retirer.
+  site.app.clients.purge();
+  assert.equal(site.store.clients.all()['tel:0612345678'].blocked, true);
+  await site.call('PUT', '/api/salon/clients', { key: 'tel:0612345678', note: '', blocked: false });
+  assert.equal((await site.request('POST', '/api/bookings', { body: booking({ date: '2026-10-16' }) })).status, 201);
+});
+
+test('rendez-vous non honoré : « Pas venu(e) » marque la fiche, pas avant l\'heure', async t => {
+  let now = { date: MONDAY, minutes: 600 };
+  const site = await salon({ clock: () => now });
+  t.after(site.stop);
+  await site.request('POST', '/api/bookings', { body: booking() });
+  const [lea] = (await site.call('GET', '/api/salon/data')).json.bookings;
+  assert.equal((await site.call('PATCH', `/api/salon/bookings/${lea.id}`, { noShow: true })).json.code, 'not_started');
+  now = { date: TUESDAY, minutes: 640 };
+  assert.equal((await site.call('PATCH', `/api/salon/bookings/${lea.id}`, { noShow: true })).json.booking.noShow, true);
+  const { clients } = (await site.call('GET', '/api/salon/data')).json;
+  assert.match(clients['tel:0612345678'].reason, /^Rendez-vous non honoré/);
 });

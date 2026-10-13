@@ -74,6 +74,8 @@ const cancelSms = booking => {
     + `Vous pouvez en reprendre un sur ${location.origin}/reservation. ${config.owner || config.name}`;
   return `sms:${booking.phone.replace(/[^\d+]/g, '')}?&body=${encodeURIComponent(text)}`;
 };
+/** Le rendez-vous a commencé (son heure est passée). */
+const started = booking => booking.date < state.today || (booking.date === state.today && booking.start <= state.nowMinutes);
 const plural = (count, one, many) => `${count} ${count > 1 ? many : one}`;
 
 /** La fermeture d'un jour : saisie par la coiffeuse (congés…), ou jour férié fermé d'office. */
@@ -1477,6 +1479,16 @@ function renderDetail({ focus = false } = {}) {
       button('Oui, superposer', '', () => resize(detail.resizeTo, true), 'check'),
       button('Non', 'btn--outline', () => ask(null)),
     ];
+  } else if (detail.asking === 'no-show') {
+    actions = [
+      h('p', { class: 'sheet-question' }, `Noter que ${booking.name} n'est pas venu(e) ? Sa fiche passera en « Ne plus reprendre » : plus de réservation en ligne avec ce numéro.`),
+      button('Oui, pas venu(e)', 'btn--danger', () => detailAction(async () => {
+        const result = await call(`/api/salon/bookings/${booking.id}`, { method: 'PATCH', body: { noShow: true } });
+        upsert(result.booking);
+        toast(`${booking.name} : fiche marquée « Ne plus reprendre ».`, { title: 'Rendez-vous non honoré' });
+      }), 'ban'),
+      button('Non', 'btn--outline', () => ask(null)),
+    ];
   } else if (detail.asking === 'restore-overlap') {
     actions = [
       h('p', { class: 'sheet-question' }, 'Sa place a été reprise par un autre rendez-vous. Le rétablir quand même, en les superposant ?'),
@@ -1512,6 +1524,8 @@ function renderDetail({ focus = false } = {}) {
       booking.status === 'pending' ? button('Confirmer', '', () => setStatus('confirmed'), 'check') : null,
       booking.status === 'pending' ? button('Confirmer à une autre heure', 'btn--outline', () => ask('confirm-move'), 'clock') : null,
       button('Déplacer', 'btn--outline', () => ask('move'), 'move'),
+      // L'heure est passée et la personne n'est pas venue : noté, et sa fiche passe en « Ne plus reprendre ».
+      started(booking) && !booking.noShow ? button('Pas venu(e)', 'btn--outline', () => ask('no-show'), 'ban') : null,
       button('Annuler le rendez-vous', 'btn--danger', () => ask('cancel')),
     ];
   }
@@ -1542,7 +1556,9 @@ function renderDetail({ focus = false } = {}) {
       booking.email ? row('E-mail', h('a', { class: 'link', href: `mailto:${booking.email}` }, booking.email)) : null,
       booking.note ? row('Message', booking.note) : null,
       booking.cancelReason ? row("Raison de l'annulation", booking.cancelReason) : null,
-      booking.attending && booking.status !== 'cancelled' ? row('Présence', 'Le client a confirmé qu\'il vient') : null,
+      booking.attending && booking.status !== 'cancelled' && !booking.noShow ? row('Présence', 'Le client a confirmé qu\'il vient') : null,
+      booking.noShow ? row('Présence', h('strong', { class: 'text-danger' }, 'Pas venu(e)')) : null,
+      booking.lateCancel ? row('Annulation', h('strong', { class: 'text-danger' }, 'De dernière minute')) : null,
       row('Reçu le', `${received.toLocaleDateString('fr-FR')} à ${received.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`),
       row('Fiche client', h('button', { type: 'button', class: 'link', onclick: () => clientsView.openClient(clientsView.clientOf(booking)?.key) }, 'Voir son historique'))),
     detail.error ? h('p', { class: 'notice notice--error', role: 'alert' }, detail.error) : null,

@@ -88,6 +88,9 @@ module.exports = {
     // Laissez vide ('') pour ne pas les afficher.
     appointmentOnly: 'Uniquement sur rendez-vous',
     noShow: 'Un seul rendez-vous non honoré et la personne ne sera pas reprise.',
+    // Annuler moins de 2 h avant (120 minutes) compte comme un rendez-vous non honoré : le client
+    // en est averti avant de confirmer, et sa fiche passe en « Ne plus reprendre ».
+    lateCancelMinutes: 120,
   },
 
   // La carte du salon (tarifs relevés sur l'affichette de Cyrille).

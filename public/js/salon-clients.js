@@ -178,6 +178,7 @@ export function createClientsView({ state, call, toast, field, view, openSheet, 
     const form = h('form', { class: 'sheet-form client-form', novalidate: true },
       field({ id: 'fiche-note', label: 'Vos notes', hint: 'Vous seule les voyez.', control: note }),
       h('label', { class: 'check', for: blockedId }, blocked, h('span', {}, 'Ne plus reprendre')),
+      h('p', { class: 'field-hint' }, 'Coché, la personne ne peut plus réserver en ligne avec ce numéro. Décochez pour la reprendre.'),
       error,
       h('div', { class: 'sheet-actions' }, submit));
     form.addEventListener('submit', async event => {
@@ -208,6 +209,8 @@ export function createClientsView({ state, call, toast, field, view, openSheet, 
     open.sheet.heading.textContent = client.name;
     open.sheet.body.replaceChildren(...[
       record.blocked ? h('p', { class: 'sheet-actions' }, blockedBadge()) : null,
+      // Posé par le site : annulation de dernière minute, ou rendez-vous non honoré.
+      record.blocked && record.reason ? h('p', { class: 'notice notice--error' }, `${record.reason}.`) : null,
       h('dl', { class: 'detail-list' },
         client.phone ? row('Téléphone', h('a', { class: 'link', href: telHref(client.phone) }, client.phone)) : null,
         row('Visites', client.past.length ? `${client.past.length}, depuis le ${shortDay(client.first.date)}` : 'Aucune pour le moment'),
