@@ -2,7 +2,7 @@
 
 const crypto = require('node:crypto');
 const { isValidDate, toMinutes, fromMinutes, addDays } = require('./time');
-const { slotProblem, hasConflict, daySlots } = require('./availability');
+const { slotProblem, hasConflict, daySlots, pausesOf } = require('./availability');
 
 const NAME_RE = /^\p{L}[\p{L}\p{M}'’ .-]{1,59}$/u;
 const STATUSES = ['pending', 'confirmed', 'cancelled'];
@@ -107,7 +107,7 @@ function createBookings({ config, store, clock, closures = () => store.closures.
    * Le client annule lui-même son rendez-vous (depuis sa page « Votre rendez-vous »). Possible
    * jusqu'à l'heure du rendez-vous : mieux vaut un créneau libéré tard qu'un rendez-vous manqué.
    */
-  function cancelByClient(id) {
+  function cancelByClient(id, reason) {
     const booking = store.bookings.get(id);
     if (!booking) return failure(404, 'Rendez-vous introuvable.');
     if (booking.status === 'cancelled') return failure(409, 'Ce rendez-vous est déjà annulé.', { code: 'already_cancelled' });
@@ -115,7 +115,37 @@ function createBookings({ config, store, clock, closures = () => store.closures.
     if (booking.date < now.date || (booking.date === now.date && booking.start <= now.minutes)) {
       return failure(409, 'Ce rendez-vous est déjà passé.', { code: 'past' });
     }
-    return { ok: true, booking: store.bookings.update(id, { status: 'cancelled', cancelledBy: 'client', cancelledAt: new Date().toISOString() }) };
+    // La raison est transmise à la coiffeuse : elle sait à quoi s'en tenir.
+    const why = cleanText(reason, 200);
+    if (why.length < 2) return failure(400, "Indiquez la raison de l'annulation.", { fields: { reason: "Indiquez la raison de l'annulation." } });
+    return { ok: true, booking: store.bookings.update(id, { status: 'cancelled', cancelledBy: 'client', cancelReason: why, cancelledAt: new Date().toISOString() }) };
+  }
+
+  /** Le client confirme qu'il vient (depuis le rappel) : la coiffeuse le voit dans son espace. */
+  function attend(id) {
+    const booking = store.bookings.get(id);
+    if (!booking) return failure(404, 'Rendez-vous introuvable.');
+    if (booking.status === 'cancelled') return failure(409, 'Ce rendez-vous est annulé.', { code: 'already_cancelled' });
+    return { ok: true, booking: store.bookings.update(id, { attending: new Date().toISOString() }) };
+  }
+
+  /**
+   * Rallonge ou raccourcit un rendez-vous (par la coiffeuse). force : même s'il déborde sur un
+   * autre rendez-vous (elle a choisi de les superposer).
+   */
+  function resize(id, duration, { force = false } = {}) {
+    const booking = store.bookings.get(id);
+    if (!booking) return failure(404, 'Rendez-vous introuvable.');
+    const step = config.booking.slotStep;
+    const lastPause = Math.max(0, ...pausesOf(booking).map(pause => pause.after + pause.duration));
+    if (!Number.isInteger(duration) || duration % step || duration <= lastPause || duration > 12 * 60) {
+      return failure(400, `Choisissez une durée par tranches de ${step} minutes${lastPause ? `, après la dernière pose` : ''}.`);
+    }
+    if (!force && duration > booking.duration && booking.status !== 'cancelled'
+      && hasConflict(store.bookings.all(), booking.date, booking.start, { ...booking, duration }, booking.id)) {
+      return failure(409, 'Le rendez-vous rallongé déborderait sur un autre rendez-vous.', { code: 'slot_taken' });
+    }
+    return { ok: true, booking: store.bookings.update(id, { duration }) };
   }
 
   /** Les créneaux où ce rendez-vous pourrait être déplacé ce jour-là (lui-même ne se gêne pas). */
@@ -130,8 +160,11 @@ function createBookings({ config, store, clock, closures = () => store.closures.
     return { ok: true, closed: day.closed, slots: day.slots.map(({ time, available }) => ({ time, available })) };
   }
 
-  /** Déplace un rendez-vous à un autre jour ou une autre heure (par la coiffeuse). */
-  function move(id, { date, time }) {
+  /**
+   * Déplace un rendez-vous à un autre jour ou une autre heure (par la coiffeuse). force : même sur un
+   * créneau déjà pris (elle superpose les deux rendez-vous), tant que le salon est ouvert.
+   */
+  function move(id, { date, time, force = false }) {
     const booking = store.bookings.get(id);
     if (!booking) return failure(404, 'Rendez-vous introuvable.');
     if (!isValidDate(date)) return failure(400, 'Date invalide.');
@@ -142,8 +175,8 @@ function createBookings({ config, store, clock, closures = () => store.closures.
       config, bookings: store.bookings.all().filter(b => b.id !== id), closures: closures(),
       service: booking, date, start, now: clock(), mode: 'salon',
     });
-    if (problem === 'taken') return failure(409, 'Ce créneau est déjà pris par un autre rendez-vous.', { code: 'slot_taken' });
-    if (problem) return failure(409, 'Le salon est fermé à ce moment-là.', { code: 'slot_unavailable' });
+    if (problem === 'taken' && !force) return failure(409, 'Ce créneau est déjà pris par un autre rendez-vous.', { code: 'slot_taken' });
+    if (problem && problem !== 'taken') return failure(409, 'Le salon est fermé à ce moment-là.', { code: 'slot_unavailable' });
     const from = { date: booking.date, time: booking.time };
     return { ok: true, from, booking: store.bookings.update(id, { date, time: fromMinutes(start), start }) };
   }
@@ -163,10 +196,10 @@ function createBookings({ config, store, clock, closures = () => store.closures.
   const publicView = b => ({
     date: b.date, time: b.time, end: fromMinutes(b.start + b.duration),
     serviceName: b.serviceName, duration: b.duration, price: b.price, priceFrom: Boolean(b.priceFrom), name: b.name,
-    status: b.status,
+    status: b.status, attending: Boolean(b.attending),
   });
 
-  return { create, setStatus, cancelByClient, move, movableSlots, remove, purgeOld, publicView };
+  return { create, setStatus, cancelByClient, attend, resize, move, movableSlots, remove, purgeOld, publicView };
 }
 
 module.exports = { createBookings, normalizePhone, cleanText };

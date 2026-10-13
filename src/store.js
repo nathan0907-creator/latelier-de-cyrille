@@ -37,6 +37,7 @@ const FILES = {
   settings: 'reglages.json',
   holidays: 'jours-feries.json',
   clients: 'clients.json',
+  salonDevices: 'appareils-salon.json',
 };
 
 /** Le dossier des photos déposées depuis l'espace salon, dans data/. */
@@ -91,6 +92,7 @@ function createStore(target) {
     settings: backend.read('settings', null),
     holidays: backend.read('holidays', null),
     clients: backend.read('clients', {}),
+    salonDevices: backend.read('salonDevices', []),
   };
   const save = key => backend.write(key, state[key]);
 
@@ -195,6 +197,19 @@ function createStore(target) {
       set(record) {
         state.settings = record;
         save('settings');
+      },
+    },
+    /** Les appareils de la coiffeuse qui reçoivent les alertes (nouvelle demande, annulation), même site fermé. */
+    salonDevices: {
+      all: () => state.salonDevices,
+      put(device) {
+        state.salonDevices = [...state.salonDevices.filter(d => d.endpoint !== device.endpoint), device].slice(-5);
+        save('salonDevices');
+      },
+      remove(endpoint) {
+        const before = state.salonDevices.length;
+        state.salonDevices = state.salonDevices.filter(d => d.endpoint !== endpoint);
+        if (state.salonDevices.length !== before) save('salonDevices');
       },
     },
     /** Jours fériés : fermeture automatique ou non, et ceux que la coiffeuse a choisi d'ouvrir. */

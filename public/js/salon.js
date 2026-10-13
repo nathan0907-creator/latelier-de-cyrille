@@ -146,6 +146,7 @@ async function toggleAlerts() {
   }
   refs.bell.setAttribute('aria-pressed', String(state.alerts));
   if (!state.alerts) {
+    await phoneAlerts(false);
     toast('Alertes désactivées.');
     return;
   }
@@ -155,9 +156,35 @@ async function toggleAlerts() {
     if (Notification.permission === 'default') await Notification.requestPermission().catch(() => {});
     system = Notification.permission === 'granted';
   }
-  toast(system
-    ? 'Un son et une notification à chaque nouveau rendez-vous.'
-    : 'Un son à chaque nouveau rendez-vous, tant que cette page reste ouverte.', { title: 'Alertes activées' });
+  const phone = system && await phoneAlerts(true);
+  toast(phone
+    ? 'Une alerte sur cet appareil à chaque nouvelle demande et à chaque annulation, même la page fermée.'
+    : system ? 'Un son et une notification à chaque nouveau rendez-vous.'
+      : 'Un son à chaque nouveau rendez-vous, tant que cette page reste ouverte.', { title: 'Alertes activées' });
+}
+
+const fromBase64Url = text => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), char => char.charCodeAt(0));
+
+/**
+ * Les alertes « push » de cet appareil : nouvelle demande, annulation par un client (avec sa raison),
+ * même quand l'espace salon est fermé. Renvoie true si l'appareil est abonné.
+ */
+async function phoneAlerts(on) {
+  if (!config.push?.key || !('serviceWorker' in navigator) || !('PushManager' in window)) return false;
+  try {
+    const registration = await navigator.serviceWorker.register(config.push.worker);
+    await navigator.serviceWorker.ready;
+    let subscription = await registration.pushManager.getSubscription();
+    if (!on) {
+      if (subscription) await call('/api/salon/push', { method: 'DELETE', body: { endpoint: subscription.endpoint } });
+      return false;
+    }
+    subscription ||= await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: fromBase64Url(config.push.key) });
+    await call('/api/salon/push', { method: 'POST', body: { subscription: subscription.toJSON() } });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function announce(booking) {
@@ -593,7 +620,9 @@ function timeline(date, ranges, bookings) {
         : null));
   }
 
+  const columns = sideBySide(bookings);
   const layer = h('div', { class: 'timeline-layer' }, bookings.map(booking => {
+    const { column, count } = columns.get(booking.id);
     const block = h('button', {
       type: 'button',
       class: `block block--${booking.status}${state.fresh.has(booking.id) ? ' is-fresh' : ''}`,
@@ -608,6 +637,11 @@ function timeline(date, ranges, bookings) {
     const place = (el, begin, end) => {
       el.style.top = `calc(${(booking.start + begin - from) / step} * var(--row-h))`;
       el.style.height = `calc(${(end - begin) / step} * var(--row-h) - 4px)`;
+      // Deux rendez-vous au même moment (superposés par la coiffeuse) : côte à côte.
+      if (count > 1) {
+        el.style.left = `calc(.4rem + (100% - .8rem) * ${column} / ${count})`;
+        el.style.right = `calc(.4rem + (100% - .8rem) * ${count - column - 1} / ${count} + 3px)`;
+      }
       return el;
     };
     place(block, 0, pauses.length ? pauses[0].after : booking.duration);
@@ -631,6 +665,41 @@ function timeline(date, ranges, bookings) {
     layer.append(refs.nowLine);
   }
   return h('div', { class: 'timeline' }, rows, layer);
+}
+
+/** Les moments où un rendez-vous occupe la coiffeuse (hors temps de pose), en minutes. */
+function busyOf(booking) {
+  const pauses = booking.pauses || (booking.pauseDuration ? [{ after: booking.pauseAfter, duration: booking.pauseDuration }] : []);
+  const parts = [];
+  let from = 0;
+  for (const pause of pauses) {
+    parts.push([booking.start + from, booking.start + pause.after]);
+    from = pause.after + pause.duration;
+  }
+  parts.push([booking.start + from, booking.start + booking.duration]);
+  return parts;
+}
+
+/**
+ * Des rendez-vous qui occupent la coiffeuse au même moment (elle les a superposés) se placent côte à
+ * côte : chacun reçoit sa colonne, et le nombre de colonnes autour de lui.
+ */
+function sideBySide(bookings) {
+  const clash = (a, b) => busyOf(a).some(([s1, e1]) => busyOf(b).some(([s2, e2]) => s1 < e2 && s2 < e1));
+  const columns = [];
+  const column = new Map();
+  for (const booking of [...bookings].sort((a, b) => a.start - b.start)) {
+    let index = columns.findIndex(list => !list.some(other => clash(other, booking)));
+    if (index === -1) index = columns.push([]) - 1;
+    columns[index].push(booking);
+    column.set(booking.id, index);
+  }
+  const placed = new Map();
+  for (const booking of bookings) {
+    const around = bookings.filter(other => other === booking || clash(other, booking)).map(other => column.get(other.id));
+    placed.set(booking.id, { column: column.get(booking.id), count: Math.max(...around) + 1 });
+  }
+  return placed;
 }
 
 /** Place (ou cache) le trait doré de l'heure courante sur l'agenda d'aujourd'hui. */
@@ -1238,16 +1307,22 @@ function renderDetail({ focus = false } = {}) {
   const button = (label, variant, onclick, iconName) => h('button', { type: 'button', class: `btn btn--small ${variant}`, onclick },
     h('span', {}, label), iconName ? icon(iconName) : null);
 
-  /** De quoi déplacer le rendez-vous : un jour, puis une heure parmi celles qui restent libres. */
-  const moveControls = () => {
+  /**
+   * De quoi déplacer le rendez-vous : un jour, puis une heure. Les heures déjà prises restent
+   * proposées (« superposé ») : la coiffeuse peut prendre deux clientes à la fois si elle le veut.
+   * confirming : on valide la demande en même temps (« Confirmer à une autre heure »).
+   */
+  const moveControls = ({ confirming = false } = {}) => {
     const day = h('input', { type: 'date', min: state.today, required: true });
     day.value = booking.date >= state.today ? booking.date : state.today;
     const slot = h('select', { required: true });
-    const go = button('Déplacer ici', '', () => detailAction(async () => {
-      const result = await call(`/api/salon/bookings/${booking.id}`, { method: 'PATCH', body: { date: day.value, time: slot.value } });
+    let taken = new Set();
+    const go = button(confirming ? 'Confirmer à cette heure' : 'Déplacer ici', '', () => detailAction(async () => {
+      const body = { date: day.value, time: slot.value, force: taken.has(slot.value), ...(confirming && { status: 'confirmed' }) };
+      const result = await call(`/api/salon/bookings/${booking.id}`, { method: 'PATCH', body });
       state.day = result.booking.date;
       upsert(result.booking);
-      toast(`${result.booking.name} · ${whenLabel(result.booking)}`, { title: 'Rendez-vous déplacé' });
+      toast(`${result.booking.name} · ${whenLabel(result.booking)}`, { title: confirming ? 'Rendez-vous confirmé' : 'Rendez-vous déplacé' });
     }), 'check');
     go.disabled = true;
     let request = 0;
@@ -1260,12 +1335,13 @@ function renderDetail({ focus = false } = {}) {
         const result = await call(`/api/salon/bookings/${booking.id}/slots?date=${day.value}`);
         if (current !== request) return;
         // Son propre créneau n'est pas proposé : déplacer, c'est aller ailleurs.
-        const free = result.slots.filter(s => s.available && !(day.value === booking.date && s.time === booking.time));
-        if (!free.length) {
-          slot.replaceChildren(h('option', { value: '' }, result.closed ? 'Salon fermé ce jour-là' : 'Aucun créneau libre'));
+        const choices = result.slots.filter(s => !(day.value === booking.date && s.time === booking.time));
+        taken = new Set(choices.filter(s => !s.available).map(s => s.time));
+        if (!choices.length) {
+          slot.replaceChildren(h('option', { value: '' }, result.closed ? 'Salon fermé ce jour-là' : 'Aucune heure possible'));
           return;
         }
-        slot.replaceChildren(...free.map(s => h('option', { value: s.time }, frTime(s.time))));
+        slot.replaceChildren(...choices.map(s => h('option', { value: s.time }, `${frTime(s.time)}${s.available ? '' : ' · superposé à un autre rendez-vous'}`)));
         go.disabled = false;
       } catch (err) {
         if (current === request) slot.replaceChildren(h('option', { value: '' }, err.message));
@@ -1274,7 +1350,9 @@ function renderDetail({ focus = false } = {}) {
     day.addEventListener('change', loadTimes);
     loadTimes();
     return [
-      h('p', { class: 'sheet-question' }, `Déplacer ce rendez-vous (${durationLabel(booking.duration)}) au :`),
+      h('p', { class: 'sheet-question' }, confirming
+        ? `Confirmer cette demande (${durationLabel(booking.duration)}) à une autre heure. Le client en est prévenu :`
+        : `Déplacer ce rendez-vous (${durationLabel(booking.duration)}) au :`),
       h('div', { class: 'field-row sheet-move' },
         field({ id: 'deplacer-date', label: 'Jour', control: day }),
         field({ id: 'deplacer-heure', label: 'Heure', control: slot })),
@@ -1283,9 +1361,29 @@ function renderDetail({ focus = false } = {}) {
     ];
   };
 
+  /** Rallonger ou raccourcir : une tranche de plus ou de moins. */
+  const resize = (duration, force = false) => detailAction(async () => {
+    try {
+      const result = await call(`/api/salon/bookings/${booking.id}`, { method: 'PATCH', body: { duration, force } });
+      upsert(result.booking);
+    } catch (err) {
+      if (err.data?.code !== 'slot_taken') throw err;
+      // Le rendez-vous rallongé déborde sur un autre : on demande avant de les superposer.
+      detail.asking = 'overlap';
+      detail.resizeTo = duration;
+    }
+  });
+  const step = config.slotStep;
+
   let actions;
-  if (detail.asking === 'move') {
-    actions = moveControls();
+  if (detail.asking === 'move' || detail.asking === 'confirm-move') {
+    actions = moveControls({ confirming: detail.asking === 'confirm-move' });
+  } else if (detail.asking === 'overlap') {
+    actions = [
+      h('p', { class: 'sheet-question' }, `Rallongé à ${durationLabel(detail.resizeTo)}, ce rendez-vous déborde sur un autre. Les superposer ?`),
+      button('Oui, superposer', '', () => resize(detail.resizeTo, true), 'check'),
+      button('Non', 'btn--outline', () => ask(null)),
+    ];
   } else if (detail.asking === 'cancel') {
     actions = [
       h('p', { class: 'sheet-question' }, 'Annuler ce rendez-vous ? Le créneau sera de nouveau proposé en ligne.'),
@@ -1309,6 +1407,7 @@ function renderDetail({ focus = false } = {}) {
   } else {
     actions = [
       booking.status === 'pending' ? button('Confirmer', '', () => setStatus('confirmed'), 'check') : null,
+      booking.status === 'pending' ? button('Confirmer à une autre heure', 'btn--outline', () => ask('confirm-move'), 'clock') : null,
       button('Déplacer', 'btn--outline', () => ask('move'), 'move'),
       button('Annuler le rendez-vous', 'btn--danger', () => ask('cancel')),
     ];
@@ -1325,10 +1424,21 @@ function renderDetail({ focus = false } = {}) {
       row('Prestation', booking.serviceName),
       row('Date', capitalize(formatLong(booking.date))),
       row('Heure', hoursLabel(booking)),
-      row('Durée', durationLabel(booking.duration)),
+      row('Durée', h('span', { class: 'duration-edit' },
+        booking.status === 'cancelled' ? null : h('button', {
+          type: 'button', class: 'icon-btn icon-btn--small', 'aria-label': `Raccourcir de ${step} minutes`,
+          disabled: booking.duration <= step, onclick: () => resize(booking.duration - step),
+        }, '−'),
+        h('span', {}, durationLabel(booking.duration)),
+        booking.status === 'cancelled' ? null : h('button', {
+          type: 'button', class: 'icon-btn icon-btn--small', 'aria-label': `Rallonger de ${step} minutes`,
+          onclick: () => resize(booking.duration + step),
+        }, '+'))),
       row('Tarif', priceText(booking)),
       booking.phone ? row('Téléphone', h('a', { class: 'link', href: telHref(booking.phone) }, booking.phone)) : null,
       booking.note ? row('Message', booking.note) : null,
+      booking.cancelReason ? row("Raison de l'annulation", booking.cancelReason) : null,
+      booking.attending && booking.status !== 'cancelled' ? row('Présence', 'Le client a confirmé qu\'il vient') : null,
       row('Reçu le', `${received.toLocaleDateString('fr-FR')} à ${received.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`),
       row('Fiche client', h('button', { type: 'button', class: 'link', onclick: () => clientsView.openClient(clientsView.clientOf(booking)?.key) }, 'Voir son historique'))),
     detail.error ? h('p', { class: 'notice notice--error', role: 'alert' }, detail.error) : null,

@@ -18,14 +18,26 @@ self.addEventListener('push', event => {
     badge: inSite('img/pastille.png'),
     tag: message.tag || 'rappel',
     lang: 'fr',
-    data: { url: message.url || '' },
+    data: { url: message.url || '', ref: message.ref || '' },
+    // Sous le rappel : venir (le salon en est prévenu) ou annuler (la page demande pourquoi).
+    actions: message.actions && message.ref ? [{ action: 'venir', title: 'Je viens' }, { action: 'annuler', title: 'Annuler' }] : [],
   }));
 });
 
 // Un appui sur la notification ouvre la page pratique (adresse, téléphone), ou y revient.
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  const target = inSite(event.notification.data?.url || '');
+  const { url = '', ref = '' } = event.notification.data || {};
+  if (event.action === 'venir' && ref) {
+    event.waitUntil(fetch(inSite('api/bookings/attend'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref }),
+    }).then(response => self.registration.showNotification(response.ok ? 'Merci, à tout à l’heure !' : 'Votre réponse n’a pas pu être envoyée', {
+      body: response.ok ? 'Le salon sait que vous venez.' : 'Ouvrez votre rendez-vous sur le site.',
+      icon: inSite('img/icone-192.png'), tag: 'reponse', lang: 'fr', data: { url },
+    })).catch(() => {}));
+    return;
+  }
+  const target = inSite(event.action === 'annuler' && url ? `${url}&annuler=1` : url);
   event.waitUntil((async () => {
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const open = windows.find(client => client.url === target);

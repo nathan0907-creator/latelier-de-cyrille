@@ -91,9 +91,12 @@ function createReminders({ config, store, clock, send = sendPush }) {
     const place = [config.name, config.address.street, config.address.city].filter(Boolean).join(', ');
     return {
       title: `Rendez-vous ${day} à ${frTime(booking.start)}`,
-      body: `${booking.serviceName} · ${place}.${config.contact.phone ? ` Un empêchement ? ${config.contact.phone}` : ''}`,
+      body: `${booking.serviceName} · ${place}. Vous venez ? Confirmez, ou annulez si vous avez un empêchement.`,
       url: pageOf(booking),
       tag: `rendez-vous-${booking.id}`,
+      // Deux boutons sous le rappel : « Je viens » (prévient le salon) et « Annuler » (avec une raison).
+      ref: `${booking.id}.${signature(booking.id)}`,
+      actions: true,
     };
   }
 
@@ -179,8 +182,37 @@ function createReminders({ config, store, clock, send = sendPush }) {
     return next;
   }
 
+  /**
+   * Alerte la coiffeuse sur ses appareils (nouvelle demande, annulation par un client), même quand
+   * l'espace salon est fermé. Renvoie le nombre d'alertes parties.
+   */
+  async function alertSalon(news) {
+    let sent = 0;
+    for (const device of [...store.salonDevices.all()]) {
+      let result;
+      try {
+        result = await send(device, { url: 'salon', ...news }, { keys: identity, subject, ttl: 12 * 3600 });
+      } catch {
+        result = { ok: false };
+      }
+      if (result.ok) sent += 1;
+      if (result.gone) store.salonDevices.remove(device.endpoint);
+    }
+    return sent;
+  }
+
+  /** Un appareil de la coiffeuse s'abonne aux alertes. */
+  function addSalonDevice(input) {
+    const subscription = readSubscription(input);
+    if (!subscription) return failure(400, "Ce navigateur ne permet pas de recevoir les alertes.");
+    store.salonDevices.put({ ...subscription, createdAt: new Date().toISOString() });
+    return { ok: true };
+  }
+
   return {
     publicKey: identity.publicKey,
+    alertSalon, addSalonDevice,
+    removeSalonDevice: endpoint => store.salonDevices.remove(String(endpoint || '')),
     leads,
     labels: leads.map(leadLabel),
     refFor, find, pageOf, subscribe, unsubscribe, notify, tick, nextDue,

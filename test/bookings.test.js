@@ -33,7 +33,7 @@ test('une réservation en ligne valide est enregistrée « à confirmer »', () 
   assert.equal(result.booking.note, 'cheveux longs');
   assert.equal(store.bookings.all().length, 1);
   assert.deepEqual(Object.keys(bookings.publicView(result.booking)).sort(),
-    ['date', 'duration', 'end', 'name', 'price', 'priceFrom', 'serviceName', 'status', 'time'], 'aucun identifiant ni téléphone renvoyé au public');
+    ['attending', 'date', 'duration', 'end', 'name', 'price', 'priceFrom', 'serviceName', 'status', 'time'], 'aucun identifiant ni téléphone renvoyé au public');
 });
 
 test('les saisies invalides sont refusées champ par champ', () => {
