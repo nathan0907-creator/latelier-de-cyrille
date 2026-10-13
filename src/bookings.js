@@ -1,9 +1,12 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const { isValidDate, toMinutes, fromMinutes, addDays } = require('./time');
+const { isValidDate, toMinutes, fromMinutes, addDays, daysBetween } = require('./time');
 const { slotProblem, hasConflict, daySlots, pausesOf } = require('./availability');
 const { readEmail } = require('./mail');
+
+/** Minutes avant le début d'un rendez-vous (négatif : commencé). */
+const minutesUntil = (booking, now) => daysBetween(now.date, booking.date) * 1440 + booking.start - now.minutes;
 
 const NAME_RE = /^\p{L}[\p{L}\p{M}'’ .-]{1,59}$/u;
 const STATUSES = ['pending', 'confirmed', 'cancelled'];
@@ -27,7 +30,7 @@ function normalizePhone(raw) {
 const failure = (status, error, extra = {}) => ({ ok: false, status, error, ...extra });
 
 /** closures : donne tous les jours fermés (fermetures saisies et jours fériés, voir src/holidays.js). */
-function createBookings({ config, store, clock, closures = () => store.closures.all(), acceptEmail = false }) {
+function createBookings({ config, store, clock, closures = () => store.closures.all(), acceptEmail = false, isBlocked = () => false }) {
   /**
    * Crée un rendez-vous. mode « public » : réservation en ligne (téléphone obligatoire,
    * délai minimum, limite par numéro). mode « salon » : saisi par la coiffeuse.
@@ -69,6 +72,11 @@ function createBookings({ config, store, clock, closures = () => store.closures.
     if (problem && problem !== 'taken') return failure(409, "Ce créneau n'est plus disponible.", { code: 'slot_unavailable' });
 
     if (mode === 'public') {
+      // Une personne marquée « ne plus reprendre » (annulation tardive, absence) ne réserve plus en ligne.
+      if (isBlocked({ phone, name })) {
+        const call = config.contact.phone ? ` Appelez le salon au ${config.contact.phone}.` : ' Appelez le salon.';
+        return failure(403, `La réservation en ligne n'est pas possible avec ce numéro.${call}`, { code: 'blocked' });
+      }
       const upcoming = store.bookings.all()
         .filter(b => b.phone === phone && b.status !== 'cancelled' && b.date >= now.date).length;
       if (upcoming >= config.booking.maxActivePerPhone) {
@@ -130,7 +138,23 @@ function createBookings({ config, store, clock, closures = () => store.closures.
     // La raison est transmise à la coiffeuse : elle sait à quoi s'en tenir.
     const why = cleanText(reason, 200);
     if (why.length < 2) return failure(400, "Indiquez la raison de l'annulation.", { fields: { reason: "Indiquez la raison de l'annulation." } });
-    return { ok: true, booking: store.bookings.update(id, { status: 'cancelled', cancelledBy: 'client', cancelReason: why, cancelledAt: new Date().toISOString() }) };
+    // Moins de lateCancelMinutes avant : une annulation de dernière minute (le client en a été averti).
+    const lateCancel = minutesUntil(booking, now) <= config.booking.lateCancelMinutes;
+    return {
+      ok: true,
+      booking: store.bookings.update(id, {
+        status: 'cancelled', cancelledBy: 'client', cancelReason: why, cancelledAt: new Date().toISOString(), ...(lateCancel && { lateCancel }),
+      }),
+    };
+  }
+
+  /** Le client n'est pas venu : la coiffeuse le note, une fois l'heure du rendez-vous passée. */
+  function markNoShow(id) {
+    const booking = store.bookings.get(id);
+    if (!booking) return failure(404, 'Rendez-vous introuvable.');
+    if (booking.status === 'cancelled') return failure(409, 'Ce rendez-vous est annulé.', { code: 'already_cancelled' });
+    if (minutesUntil(booking, clock()) > 0) return failure(409, "Le rendez-vous n'a pas encore commencé.", { code: 'not_started' });
+    return { ok: true, booking: store.bookings.update(id, { noShow: true }) };
   }
 
   /** Le client confirme qu'il vient (depuis le rappel) : la coiffeuse le voit dans son espace. */
@@ -211,7 +235,7 @@ function createBookings({ config, store, clock, closures = () => store.closures.
     status: b.status, attending: Boolean(b.attending), cancelledBy: b.status === 'cancelled' ? b.cancelledBy || 'salon' : '',
   });
 
-  return { create, setStatus, cancelByClient, attend, resize, move, movableSlots, remove, purgeOld, publicView };
+  return { create, setStatus, cancelByClient, markNoShow, attend, resize, move, movableSlots, remove, purgeOld, publicView };
 }
 
 module.exports = { createBookings, normalizePhone, cleanText };

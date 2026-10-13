@@ -20,27 +20,51 @@ function clientKey(booking) {
 
 function createClients({ store }) {
   const known = () => new Set(store.bookings.all().map(clientKey));
+  /** La fiche enregistrée sous cette clé (jamais une propriété héritée comme « __proto__ »). */
+  const recordOf = key => (Object.hasOwn(store.clients.all(), key) ? store.clients.all()[key] : null);
 
   /** Enregistre la note et le « ne plus reprendre » d'une fiche ; une fiche vidée n'est pas gardée. */
   function save(input) {
     const key = typeof input?.key === 'string' ? input.key : '';
-    if (!known().has(key)) return failure(404, 'Fiche introuvable : cette personne n\'a plus de rendez-vous enregistré.');
+    // Une fiche marquée reste modifiable même quand ses rendez-vous ont été effacés.
+    if (!known().has(key) && !recordOf(key)) return failure(404, 'Fiche introuvable : cette personne n\'a plus de rendez-vous enregistré.');
     if (typeof input.note !== 'string' || input.note.length > NOTE_MAX * 2) return failure(400, `La note est trop longue (${NOTE_MAX} caractères au plus).`);
     // Les retours à la ligne sont gardés, pas les autres caractères de commande.
     const note = input.note.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, '').trim();
     if (note.length > NOTE_MAX) return failure(400, `La note est trop longue (${NOTE_MAX} caractères au plus).`);
     const blocked = input.blocked === true;
-    store.clients.set(key, note || blocked ? { note, blocked, updatedAt: new Date().toISOString() } : null);
+    // La raison d'un « ne plus reprendre » posé par le site (annulation tardive, absence) est gardée
+    // tant que la coiffeuse ne le retire pas.
+    const { reason = '', markedAt = '' } = blocked ? recordOf(key) || {} : {};
+    store.clients.set(key, note || blocked ? { note, blocked, ...(reason && { reason, markedAt }), updatedAt: new Date().toISOString() } : null);
     return { ok: true, clients: store.clients.all() };
   }
 
-  /** Quand les rendez-vous d'une personne sont effacés (durée de conservation), sa fiche l'est aussi. */
+  /**
+   * Quand les rendez-vous d'une personne sont effacés (durée de conservation), sa fiche l'est aussi,
+   * sauf un « ne plus reprendre » : il reste jusqu'à ce que la coiffeuse le retire.
+   */
   function purge() {
     const keys = known();
-    return store.clients.removeWhere(key => !keys.has(key));
+    return store.clients.removeWhere((key, record) => !keys.has(key) && !record.blocked);
   }
 
-  return { save, purge, all: () => store.clients.all() };
+  /**
+   * Annulation de dernière minute, rendez-vous non honoré : la fiche passe en « ne plus reprendre »,
+   * avec la raison. La réservation en ligne n'est plus possible avec ce numéro.
+   */
+  function mark(booking, reason) {
+    const key = clientKey(booking);
+    const record = recordOf(key) || { note: '' };
+    const now = new Date().toISOString();
+    store.clients.set(key, { ...record, blocked: true, reason, markedAt: now, updatedAt: now });
+    return store.clients.all();
+  }
+
+  /** Cette personne (téléphone, ou nom sans téléphone) est-elle marquée « ne plus reprendre » ? */
+  const isBlocked = person => Boolean(recordOf(clientKey(person))?.blocked);
+
+  return { save, purge, mark, isBlocked, all: () => store.clients.all() };
 }
 
 module.exports = { createClients, clientKey, normalizeName, NOTE_MAX };

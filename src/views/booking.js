@@ -24,7 +24,8 @@ function booking(site) {
   const { noShow } = config.booking;
   // La règle du rendez-vous manqué, et qui prévenir : dite avant d'envoyer, redite dans la confirmation.
   // L'heure demandée peut être ajustée par la coiffeuse en validant : dit avant d'envoyer, redit après.
-  const who = config.owner || 'la coiffeuse';
+  // C'est le salon qui valide, ajuste ou annule (pas « Cyrille » en personne).
+  const who = config.name;
   const warning = html`<p class="pay-note">${icon('info')}<span>${noShow ? html`<strong>${noShow}</strong> ` : ''}Un empêchement&nbsp;? Prévenez le salon au <a class="link" href="${telHref(phone)}">${phone}</a>.</span></p>
 <p class="pay-note">${icon('clock')}<span><strong>C'est une demande&nbsp;:</strong> en la validant, ${who} peut ajuster l'heure dans la journée. Vous en êtes prévenu(e)&nbsp;; pensez à revenir vérifier votre rendez-vous sur le site.</span></p>`;
 

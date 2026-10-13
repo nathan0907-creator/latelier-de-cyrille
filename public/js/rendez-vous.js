@@ -4,7 +4,9 @@
 import { api, readPageData } from './lib.js';
 
 const root = document.querySelector('[data-cancel]');
-const { ref, state } = readPageData();
+const { ref, state, lateIn = 0 } = readPageData();
+// À partir de ce moment, annuler compte comme une annulation de dernière minute (avertissement).
+const lateAt = Date.now() + lateIn * 60_000;
 const MINE_KEY = 'mes-rendez-vous';
 
 /** La page de réservation n'a plus à proposer ce rendez-vous sur cet appareil. */
@@ -40,7 +42,13 @@ if (root && ref) {
   const error = root.querySelector('[data-cancel-error]');
   const reason = root.querySelector('[data-cancel-reason]');
 
+  const late = root.querySelector('[data-cancel-late]');
   const asking = on => {
+    // Avertir avant de confirmer : la page a pu rester ouverte jusqu'à la dernière minute.
+    if (on && late) {
+      late.hidden = Date.now() < lateAt;
+      yes.querySelector('span').textContent = late.hidden ? 'Oui, annuler' : 'Annuler quand même';
+    }
     ask.hidden = on;
     confirm.hidden = !on;
     (on ? reason : ask).focus();
