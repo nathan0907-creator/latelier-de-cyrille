@@ -9,6 +9,7 @@ function salon(site) {
   const data = {
     name: config.name,
     owner: config.owner,
+    phone: config.contact.phone,
     services: config.services.map(({ id, name, duration, price, priceFrom, category }) => ({ id, name, duration, price, priceFrom, category })),
     hours: config.hours,
     slotStep: config.booking.slotStep,

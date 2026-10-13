@@ -12,7 +12,7 @@ const { createStats } = require('./stats');
 const { createSettings } = require('./settings');
 const { createHolidays } = require('./holidays');
 const { createClients } = require('./clients');
-const { createMailer } = require('./mail');
+const { createMailer, readEmail } = require('./mail');
 const { createMails } = require('./mails');
 const { HttpError, clientIp, isSecure, sameOrigin, readJson, applySecurityHeaders, send, sendJson, sendHtml } = require('./http');
 const views = require('./views');
@@ -378,6 +378,27 @@ function createApp({
     // — Réglages : ce que la coiffeuse modifie elle-même —
 
     if (route === 'GET /api/salon/settings') return json(200, settings.snapshot());
+
+    // Le texte des e-mails aux clients (page « E-mails » de l'espace salon).
+    if (route === 'GET /api/salon/mails') return json(200, mails.texts());
+    if (route === 'PUT /api/salon/mails') {
+      const result = mails.setText(await readJson(req, 64 * 1024));
+      if (!result.ok) return reject(result);
+      return json(200, mails.texts());
+    }
+    // Un essai, envoyé à l'adresse de la coiffeuse, avec un client et un rendez-vous d'exemple.
+    if (route === 'POST /api/salon/mails/test') {
+      const body = await readJson(req);
+      const to = readEmail(body.to);
+      if (!to) return json(400, { error: 'Indiquez une adresse e-mail valide.' });
+      if (!mails.enabled) return json(409, { error: "Les e-mails ne sont pas en service : la clé Brevo manque (voir le README)." });
+      const sample = {
+        id: 'exemple', name: 'Léa Dupont', email: to, serviceName: config.services[0]?.name || 'Coupe',
+        date: addDays(clock().date, 1), start: 10 * 60, site: originOf(req),
+      };
+      const sent = await mails.notify(sample, String(body.kind || ''));
+      return sent ? json(200, { ok: true }) : json(502, { error: "L'e-mail n'est pas parti : regardez dans Brevo, « Transactionnel »." });
+    }
 
     if (route === 'PUT /api/salon/settings') {
       const body = await readJson(req, 256 * 1024);

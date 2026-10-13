@@ -443,3 +443,39 @@ test('rendez-vous non honoré : « Pas venu(e) » marque la fiche, pas avant l\'
   const { clients } = (await site.call('GET', '/api/salon/data')).json;
   assert.match(clients['tel:0612345678'].reason, /^Rendez-vous non honoré/);
 });
+
+test('e-mails : la coiffeuse réécrit un texte, les clients le reçoivent ; texte d\'origine sur demande', async t => {
+  const mails = [];
+  const mailer = { enabled: true, send: async message => { mails.push(message); return { ok: true, status: 201 }; } };
+  const site = await salon({ clock: () => ({ date: '2026-10-10', minutes: 600 }), mailer });
+  t.after(site.stop);
+
+  assert.equal((await site.request('GET', '/api/salon/mails')).status, 401, 'réservé à la coiffeuse');
+  const start = (await site.call('GET', '/api/salon/mails')).json;
+  assert.deepEqual(start.kinds.map(item => item.kind), ['received', 'confirmed', 'moved', 'cancelled', 'reminder']);
+  assert.ok(start.fields.includes('prenom'));
+  assert.equal(start.kinds[0].custom, false);
+
+  const saved = await site.call('PUT', '/api/salon/mails', {
+    kind: 'received', subject: 'Merci {prenom} ! ({date}, {heure})', body: 'Coucou {prenom},\r\n\r\nOn a bien noté : {prestation}.\n{inconnu} reste tel quel.',
+  });
+  assert.equal(saved.json.kinds[0].custom, true);
+  assert.equal((await site.call('PUT', '/api/salon/mails', { kind: 'nimporte', subject: 'x', body: 'y' })).status, 400);
+  assert.equal((await site.call('PUT', '/api/salon/mails', { kind: '__proto__', subject: 'x', body: 'y' })).status, 400);
+  assert.equal((await site.call('PUT', '/api/salon/mails', { kind: 'received', subject: 'x'.repeat(151), body: 'y' })).status, 400);
+
+  await site.request('POST', '/api/bookings', { body: booking({ email: 'lea@example.fr' }) });
+  assert.equal(mails[0].subject, 'Merci Léa ! (mardi 13 octobre, 10h)');
+  assert.match(mails[0].text, /^Coucou Léa,\nOn a bien noté : Court\.\n\{inconnu\} reste tel quel\.\n\nVoir ou annuler mon rendez-vous : /);
+  assert.match(mails[0].text, /Informations pratiques/, 'les informations pratiques restent');
+
+  // Un essai à l'adresse de la coiffeuse, avec le texte enregistré.
+  assert.equal((await site.call('POST', '/api/salon/mails/test', { kind: 'received', to: 'pas une adresse' })).status, 400);
+  assert.equal((await site.call('POST', '/api/salon/mails/test', { kind: 'received', to: 'cyrille@example.fr' })).status, 200);
+  assert.deepEqual([mails[1].to, mails[1].subject], ['cyrille@example.fr', 'Merci Léa ! (dimanche 11 octobre, 10h)']);
+
+  // Texte vide : retour au texte d'origine.
+  const reset = await site.call('PUT', '/api/salon/mails', { kind: 'received', subject: '', body: '' });
+  assert.equal(reset.json.kinds[0].custom, false);
+  assert.equal(reset.json.kinds[0].subject, 'Votre demande de rendez-vous du {date} à {heure}');
+});

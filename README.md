@@ -226,6 +226,8 @@ Avec une adresse e-mail laissée en réservant (case « E-mail (conseillé) »),
 
 Les réponses des clients vont à l'adresse e-mail du salon, si elle est renseignée dans `salon.config.js` (`contact.email`).
 
+Le texte de chaque e-mail se change dans l'espace salon, onglet **E-mails** : objet et texte, avec `{prenom}`, `{date}`, `{heure}`, `{prestation}`… remplis pour chaque client, un aperçu, « M'envoyer un essai » et « Revenir au texte d'origine ». Les textes sont gardés dans `data/textes-emails.json`.
+
 ### 6. Un site d'essai
 
 Un second site, `latelier-de-cyrille-essai`, pour tout essayer (réserver, annuler, valider, recevoir les alertes) sans toucher au vrai : ses rendez-vous, son compte et ses alertes sont à part. Son nom porte « (site d'essai) » et il n'apparaît pas sur Google.
