@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { daySlots, monthSummary, nextSlot, slotProblem, openStatus, closurePeriods } = require('../src/availability');
+const { daySlots, monthSummary, nextSlot, slotProblem, openStatus, closurePeriods, readDayHours } = require('../src/availability');
 const { testConfig, TUESDAY, MONDAY, SATURDAY } = require('./helpers');
 
 const config = testConfig();
@@ -117,4 +117,32 @@ test('congés : les jours fermés se regroupent en périodes, avec le jour de r�
   // Un jour ouvré entre deux fermetures, ou un autre motif : deux périodes distinctes.
   assert.equal(closurePeriods({ config, closures: [day('2026-10-20'), day('2026-10-22')], now }).length, 2);
   assert.equal(closurePeriods({ config, closures: [day('2026-10-20'), day('2026-10-21', 'Travaux')], now }).length, 2);
+});
+
+test("un jour particulier : quelques heures bloquées, ou d'autres horaires ce jour-là", () => {
+  const base = { config, bookings: [], service: service('court'), now };
+  // Mardi : 9h – 12h30 et 13h30 – 19h d'habitude ; bloqué de 9h à 11h.
+  const blocked = [{ date: TUESDAY, reason: 'Rendez-vous médical', hours: [{ start: 660, end: 750 }, { start: 810, end: 1140 }] }];
+  const morning = times(daySlots({ ...base, closures: blocked, date: TUESDAY }));
+  assert.equal(morning[0], '11:00');
+  assert.ok(morning.includes('14:00'));
+
+  // Un lundi, fermé d'habitude, ouvert ce jour-là de 10h à 12h.
+  const opened = [{ date: '2026-10-19', reason: '', hours: [{ start: 600, end: 720 }] }];
+  assert.deepEqual(times(daySlots({ ...base, closures: opened, date: '2026-10-19' })), ['10:00', '10:30', '11:00', '11:30']);
+  assert.deepEqual(openStatus({ config, closures: opened, now: { date: '2026-10-19', minutes: 630 } }), { open: true, until: 720 });
+
+  // Ni l'un ni l'autre n'est annoncé comme une fermeture ; le lundi ouvert est le jour de réouverture.
+  assert.deepEqual(closurePeriods({ config, closures: blocked, now }), []);
+  const holidays = closurePeriods({ config, closures: [{ date: SATURDAY, reason: 'Congés' }, ...opened], now });
+  assert.deepEqual(holidays.map(p => [p.from, p.to, p.reopens]), [[SATURDAY, SATURDAY, '2026-10-19']]);
+});
+
+test('horaires particuliers : vérifiés avant d\'être enregistrés', () => {
+  assert.deepEqual(readDayHours([{ start: '14:00', end: '18:00' }, { start: '09:30', end: '12:00' }], 30),
+    { hours: [{ start: 570, end: 720 }, { start: 840, end: 1080 }] });
+  for (const input of [[], '09:00', [{ start: '12:00', end: '10:00' }], [{ start: '09:15', end: '10:00' }],
+    [{ start: '09:00', end: '12:00' }, { start: '11:00', end: '13:00' }], [{ start: '9h', end: '10:00' }], [{}, {}, {}, {}]]) {
+    assert.ok(readDayHours(input, 30).error, JSON.stringify(input));
+  }
 });

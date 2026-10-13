@@ -142,6 +142,19 @@ test('espace salon : fermé sans session, configuration, connexion, actions, dé
   assert.equal((await site.request('GET', '/api/availability?service=court&date=2026-10-22')).json.closed, false);
   assert.doesNotMatch((await site.request('GET', '/')).text, /Fermé du mardi 20/);
 
+  // Un jour particulier : ouvert seulement de 14h à 16h. Pas annoncé comme une fermeture.
+  const special = await site.request('POST', '/api/salon/closures', { ...authed, body: { date: '2026-10-20', reason: 'Formation le matin', hours: [{ start: '14:00', end: '16:00' }] } });
+  assert.equal(special.status, 201);
+  assert.deepEqual(special.json.closure.hours, [{ start: 840, end: 960 }]);
+  const shortened = (await site.request('GET', '/api/availability?service=court&date=2026-10-20')).json;
+  assert.equal(shortened.closed, false);
+  assert.deepEqual(shortened.slots.map(s => s.time), ['14:00', '14:30', '15:00', '15:30']);
+  assert.doesNotMatch((await site.request('GET', '/')).text, /Formation le matin/);
+  assert.equal((await site.request('POST', '/api/salon/closures', { ...authed, body: { date: '2026-10-20', until: '2026-10-21', hours: [{ start: '14:00', end: '16:00' }] } })).status, 400);
+  assert.equal((await site.request('POST', '/api/salon/closures', { ...authed, body: { date: '2026-10-20', hours: [{ start: '16:00', end: '14:00' }] } })).status, 400);
+  assert.equal((await site.request('DELETE', '/api/salon/closures/2026-10-20', authed)).status, 200);
+  assert.equal((await site.request('GET', '/api/availability?service=court&date=2026-10-20')).json.slots.length, 18);
+
   assert.equal((await site.request('DELETE', `/api/salon/bookings/${id}`, authed)).status, 200);
   assert.equal((await site.request('DELETE', `/api/salon/bookings/${id}`, authed)).status, 404);
 
