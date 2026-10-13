@@ -90,12 +90,13 @@ function createBookings({ config, store, clock, closures = () => store.closures.
     return { ok: true, booking };
   }
 
-  function setStatus(id, status) {
+  /** force : rétablir un rendez-vous annulé même si sa place a été reprise (les deux se superposent). */
+  function setStatus(id, status, { force = false } = {}) {
     if (!STATUSES.includes(status)) return failure(400, 'Statut invalide.');
     const booking = store.bookings.get(id);
     if (!booking) return failure(404, 'Rendez-vous introuvable.');
     const reactivating = booking.status === 'cancelled' && status !== 'cancelled';
-    if (reactivating && booking.date >= clock().date
+    if (reactivating && !force && booking.date >= clock().date
       && hasConflict(store.bookings.all(), booking.date, booking.start, booking, booking.id)) {
       return failure(409, 'Ce créneau a été repris par un autre rendez-vous.', { code: 'slot_taken' });
     }

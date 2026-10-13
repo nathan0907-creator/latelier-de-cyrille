@@ -4,7 +4,7 @@
 
 import {
   h, icon, api, animate, readPageData, debounce, addDays, addMonths, daysInMonth, mondayIndex, formatLong, formatShort,
-  formatMonth, capitalize, pad2, fromMinutes, frTime, durationLabel, euros,
+  formatMonth, capitalize, pad2, fromMinutes, toMinutes, frTime, durationLabel, euros,
 } from './lib.js';
 import { createSettingsViews } from './salon-reglages.js';
 import { createClientsView } from './salon-clients.js';
@@ -1329,9 +1329,15 @@ function renderDetail({ focus = false } = {}) {
   if (!booking) return; // supprimé entre-temps : la fenêtre est en train de se fermer
   const row = (label, value) => h('div', {}, h('dt', {}, label), h('dd', {}, value));
   const received = new Date(booking.createdAt);
-  const setStatus = status => detailAction(async () => {
-    const result = await call(`/api/salon/bookings/${booking.id}`, { method: 'PATCH', body: { status } });
-    upsert(result.booking);
+  const setStatus = (status, force = false) => detailAction(async () => {
+    try {
+      const result = await call(`/api/salon/bookings/${booking.id}`, { method: 'PATCH', body: { status, force } });
+      upsert(result.booking);
+    } catch (err) {
+      if (err.data?.code !== 'slot_taken') throw err;
+      // Rétablir un rendez-vous dont la place a été reprise : on demande avant de les superposer.
+      detail.asking = 'restore-overlap';
+    }
   });
   const ask = question => {
     detail.asking = question;
@@ -1350,19 +1356,38 @@ function renderDetail({ focus = false } = {}) {
     day.value = booking.date >= state.today ? booking.date : state.today;
     const slot = h('select', { required: true });
     let taken = new Set();
-    const go = button(confirming ? 'Confirmer à cette heure' : 'Déplacer ici', '', () => detailAction(async () => {
+    const note = h('p', { class: 'field-hint' });
+    const label = h('span', {}, '');
+    const go = h('button', { type: 'button', class: 'btn btn--small', onclick: () => detailAction(async () => {
       const body = { date: day.value, time: slot.value, force: taken.has(slot.value), ...(confirming && { status: 'confirmed' }) };
       const result = await call(`/api/salon/bookings/${booking.id}`, { method: 'PATCH', body });
       state.day = result.booking.date;
       upsert(result.booking);
-      toast(`${result.booking.name} · ${whenLabel(result.booking)}`, { title: confirming ? 'Rendez-vous confirmé' : 'Rendez-vous déplacé' });
-    }), 'check');
+      toast(`${result.booking.name} · ${whenLabel(result.booking)}`, {
+        title: body.force ? 'Rendez-vous superposé' : confirming ? 'Rendez-vous confirmé' : 'Rendez-vous déplacé',
+      });
+    }) }, label, icon('check'));
+    /** Le bouton dit ce qui va se passer : déplacer, ou superposer à tel rendez-vous. */
+    const describe = () => {
+      const overlapping = taken.has(slot.value);
+      label.textContent = overlapping ? (confirming ? 'Confirmer en superposant' : 'Superposer ici')
+        : confirming ? 'Confirmer à cette heure' : 'Déplacer ici';
+      const start = toMinutes(slot.value);
+      const others = overlapping ? state.bookings.filter(b => b.id !== booking.id && isActive(b) && b.date === day.value
+        && b.start < start + booking.duration && start < b.start + b.duration) : [];
+      note.textContent = overlapping
+        ? `Les deux rendez-vous auront lieu en même temps${others.length ? `, avec ${others.map(b => `${b.name} (${hoursLabel(b)})`).join(', ')}` : ''}.`
+        : '';
+    };
+    slot.addEventListener('change', describe);
     go.disabled = true;
+    describe();
     let request = 0;
     const loadTimes = async () => {
       const current = ++request;
       go.disabled = true;
       slot.replaceChildren(h('option', { value: '' }, day.value ? 'Chargement…' : 'Choisissez une date'));
+      describe();
       if (!day.value) return;
       try {
         const result = await call(`/api/salon/bookings/${booking.id}/slots?date=${day.value}`);
@@ -1374,8 +1399,16 @@ function renderDetail({ focus = false } = {}) {
           slot.replaceChildren(h('option', { value: '' }, result.closed ? 'Salon fermé ce jour-là' : 'Aucune heure possible'));
           return;
         }
-        slot.replaceChildren(...choices.map(s => h('option', { value: s.time }, `${frTime(s.time)}${s.available ? '' : ' · superposé à un autre rendez-vous'}`)));
+        // Les heures libres d'abord, puis celles où il faudrait superposer deux rendez-vous.
+        const free = choices.filter(s => s.available);
+        const busy = choices.filter(s => !s.available);
+        const options = list => list.map(s => h('option', { value: s.time }, frTime(s.time)));
+        slot.replaceChildren(...[
+          free.length && h('optgroup', { label: 'Heures libres' }, ...options(free)),
+          busy.length && h('optgroup', { label: 'Superposer à un autre rendez-vous' }, ...options(busy)),
+        ].filter(Boolean));
         go.disabled = false;
+        describe();
       } catch (err) {
         if (current === request) slot.replaceChildren(h('option', { value: '' }, err.message));
       }
@@ -1389,6 +1422,7 @@ function renderDetail({ focus = false } = {}) {
       h('div', { class: 'field-row sheet-move' },
         field({ id: 'deplacer-date', label: 'Jour', control: day }),
         field({ id: 'deplacer-heure', label: 'Heure', control: slot })),
+      note,
       go,
       button('Ne pas déplacer', 'btn--outline', () => ask(null)),
     ];
@@ -1415,6 +1449,12 @@ function renderDetail({ focus = false } = {}) {
     actions = [
       h('p', { class: 'sheet-question' }, `Rallongé à ${durationLabel(detail.resizeTo)}, ce rendez-vous déborde sur un autre. Les superposer ?`),
       button('Oui, superposer', '', () => resize(detail.resizeTo, true), 'check'),
+      button('Non', 'btn--outline', () => ask(null)),
+    ];
+  } else if (detail.asking === 'restore-overlap') {
+    actions = [
+      h('p', { class: 'sheet-question' }, 'Sa place a été reprise par un autre rendez-vous. Le rétablir quand même, en les superposant ?'),
+      button('Oui, superposer', '', () => setStatus('confirmed', true), 'check'),
       button('Non', 'btn--outline', () => ask(null)),
     ];
   } else if (detail.asking === 'cancel') {
