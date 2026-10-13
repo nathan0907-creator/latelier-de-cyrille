@@ -110,9 +110,9 @@ function structuredData(site, { catalog = false, crumb = '', trail = [], schema 
   return { '@context': 'https://schema.org', '@graph': graph };
 }
 
-/** Le titre de la gazette, en écriture d'enseigne. */
+/** Le titre de la gazette, en écriture d'enseigne, avec le portrait de la coiffeuse en médaillon. */
 function brand(config, href = '/') {
-  return html`<a class="brand" href="${href}" aria-label="${config.name}, retour à la une">${config.name}</a>`;
+  return html`<a class="brand" href="${href}" aria-label="${config.name}, retour à la une"><img class="brand-avatar" src="/img/cyrille.webp" alt="Portrait de ${config.owner || config.name}" width="44" height="44">${config.name}</a>`;
 }
 
 /**
