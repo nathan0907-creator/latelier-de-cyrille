@@ -1370,10 +1370,25 @@ img.is-missing {
   white-space: nowrap;
 }
 
+/* Le portrait de la coiffeuse, en médaillon devant le nom. */
+.brand-avatar {
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin-right: .6rem;
+  border-radius: 50%;
+}
+
 /* Petit téléphone : le nom du salon et le bouton « Sommaire » tiennent côte à côte. */
 @media (max-width: 26rem) {
   .site-header .brand {
     font-size: 1.75rem;
+  }
+
+  .brand-avatar {
+    width: 2.25rem;
+    height: 2.25rem;
+    margin-right: .45rem;
   }
 }
 

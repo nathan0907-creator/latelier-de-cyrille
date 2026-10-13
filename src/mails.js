@@ -78,7 +78,8 @@ function createMails({ config, store, clock, mailer, pageOf }) {
     ].join('\n');
     const html = `<!doctype html><html lang="fr"><body style="margin:0;padding:24px;background:#f5eee1;font-family:Georgia,serif;color:#1d1a16">
 <div style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #1d1a16;border-top:4px solid #1d1a16;padding:24px">
-<p style="margin:0 0 16px;font:700 13px Arial,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#8a6a1c">${escape(config.name)}</p>
+${base(booking) ? `<img src="${escape(base(booking))}/img/cyrille.png" width="88" height="88" alt="${escape(config.name)}" style="display:block;margin:0 auto 12px;border:0;border-radius:50%">` : ''}
+<p style="margin:0 0 16px;font:700 13px Arial,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#8a6a1c;text-align:center">${escape(config.name)}</p>
 ${message.lines.map(line => `<p style="margin:0 0 12px;font-size:16px;line-height:1.5">${escape(line)}</p>`).join('\n')}
 ${href ? `<p style="margin:20px 0"><a href="${escape(href)}" style="display:inline-block;padding:12px 18px;background:#1d1a16;color:#ffffff;font:700 14px Arial,sans-serif;text-decoration:none;text-transform:uppercase;letter-spacing:.04em">${escape(message.action)}</a></p>` : ''}
 <hr style="border:0;border-top:1px dashed #1d1a16;margin:24px 0 16px">
