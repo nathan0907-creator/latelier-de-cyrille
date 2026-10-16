@@ -512,4 +512,54 @@ const introPlaying = root.classList.contains('intro-on') && Boolean(intro);
 setTimeout(initReveals, introPlaying ? 650 : 0);
 if (introPlaying) setTimeout(() => intro.remove(), 2800);
 
+// ── L'événement du mois : l'encart à l'arrivée ───────────────────────────
+// Il s'ouvre une fois le rideau passé, et ne revient plus une fois fermé (jusqu'au prochain
+// événement, ou à une modification de celui-ci). Sur téléphone, il attend que l'avis sur les
+// cookies ait reçu sa réponse, pour ne pas s'y superposer.
+
+const EVENT_KEY = 'encart-evenement';
+
+function initEventPop() {
+  const pop = document.querySelector('[data-event-pop]');
+  if (!pop) return;
+  const rev = pop.dataset.eventRev || '';
+  try {
+    if (localStorage.getItem(EVENT_KEY) === rev) return;
+  } catch {
+    // Stockage indisponible : l'encart s'affiche.
+  }
+  const remember = () => {
+    try {
+      localStorage.setItem(EVENT_KEY, rev);
+    } catch {
+      // Navigation privée : l'encart reviendra à la prochaine visite.
+    }
+  };
+  const close = () => {
+    remember();
+    pop.classList.remove('is-open');
+    setTimeout(() => { pop.hidden = true; }, reducedMotion ? 0 : 350);
+  };
+  pop.querySelector('[data-event-pop-close]').addEventListener('click', close);
+  pop.querySelector('[data-event-pop-go]').addEventListener('click', remember);
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !pop.hidden) close();
+  });
+
+  const open = () => {
+    pop.hidden = false;
+    requestAnimationFrame(() => requestAnimationFrame(() => pop.classList.add('is-open')));
+  };
+  const whenFree = () => {
+    if (matchMedia('(max-width: 46rem)').matches && root.classList.contains('cookies-on')) {
+      document.addEventListener('cookies', () => setTimeout(open, 700), { once: true });
+    } else {
+      open();
+    }
+  };
+  setTimeout(whenFree, introPlaying ? 3100 : 1400);
+}
+
+initEventPop();
+
 window.__siteReady = true;

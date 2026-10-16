@@ -6,7 +6,8 @@ import {
   h, icon, api, animate, readPageData, debounce, addDays, addMonths, daysInMonth, mondayIndex, formatLong, formatShort,
   formatMonth, capitalize, pad2, fromMinutes, toMinutes, frTime, durationLabel, euros,
 } from './lib.js';
-import { createSettingsViews } from './salon-reglages.js';
+import { createSettingsViews, preparePhoto } from './salon-reglages.js';
+import { createEventView } from './salon-evenement.js';
 import { createClientsView } from './salon-clients.js';
 import { createMailsView } from './salon-mails.js';
 
@@ -502,6 +503,7 @@ const TABS = [
   { key: 'prices', label: 'Tarifs', icon: 'tag' },
   { key: 'hours', label: 'Horaires', icon: 'clock' },
   { key: 'photos', label: 'Photos', icon: 'image' },
+  { key: 'event', label: 'Événement', icon: 'star' },
   { key: 'mails', label: 'E-mails', icon: 'mail' },
   { key: 'audience', label: 'Fréquentation', icon: 'eye' },
 ];
@@ -515,6 +517,9 @@ const settingsViews = createSettingsViews({
     renderStats();
   },
 });
+
+// L'événement du mois (soirée Halloween…) : la une, sa page, l'encart d'arrivée.
+const eventView = createEventView({ call, toast, field, view: () => refs.view, preparePhoto });
 
 // Le texte des e-mails aux clients.
 const mailsView = createMailsView({ call, toast, field, view: () => refs.view, salonName: config.name, phone: config.phone });
@@ -588,6 +593,7 @@ const VIEWS = {
   hours: { mount: settingsViews.mountHours, render: () => {} },
   photos: { mount: settingsViews.mountPhotos, render: () => {} },
   mails: { mount: mailsView.mount, render: () => {} },
+  event: { mount: eventView.mount, render: () => {} },
 };
 
 function setTab(tab) {

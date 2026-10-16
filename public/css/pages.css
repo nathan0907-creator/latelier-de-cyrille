@@ -1471,3 +1471,186 @@
 .menu-group > .actions {
   margin-top: 1.5rem;
 }
+
+/* ── L'événement du mois : la rubrique de la une et sa page ────────────── */
+
+.event-card {
+  display: grid;
+  border: 1px solid var(--ink);
+  background: var(--white);
+}
+
+.event-card.event--soiree {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.event-card-photo {
+  border-bottom: 1px solid var(--ink);
+}
+
+.event-card-photo .frame {
+  height: 100%;
+  border: 0;
+  aspect-ratio: 4 / 3;
+}
+
+.event-card-body {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 1.1rem;
+  padding: clamp(1.4rem, 4vw, 3rem);
+}
+
+.event-when {
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  color: var(--accent-text);
+  font-family: var(--font-label);
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.event-when--large {
+  font-size: 1.2rem;
+}
+
+.event-title {
+  text-wrap: balance;
+}
+
+.event--soiree .headline em {
+  color: var(--gold-bright);
+}
+
+.event-summary {
+  max-width: 36rem;
+  font-size: 1.2rem;
+  line-height: 1.45;
+}
+
+.event-card .actions,
+.event-article .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+}
+
+@media (min-width: 56rem) {
+  .event-card {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  }
+
+  .event-card--text {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .event-card-photo {
+    border-right: 1px solid var(--ink);
+    border-bottom: 0;
+  }
+
+  .event-card-photo .frame {
+    min-height: 26rem;
+    aspect-ratio: auto;
+  }
+}
+
+/* La page de l'événement : en thème « soirée », toute la page passe à l'encre. */
+.event-page.event--soiree {
+  padding-bottom: clamp(2rem, 5vw, 4rem);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.event-preview {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  margin-block: 1rem;
+  color: var(--ink);
+}
+
+.event-layout {
+  display: grid;
+  gap: clamp(1.75rem, 4vw, 3.5rem);
+  align-items: start;
+  padding-bottom: clamp(2rem, 5vw, 3.5rem);
+}
+
+.event-main-photo .frame,
+.event-photos .frame {
+  aspect-ratio: 4 / 5;
+}
+
+.event-main-photo.r-4-3 .frame,
+.event-photos li.r-4-3 .frame { aspect-ratio: 4 / 3; }
+.event-main-photo.r-4-5 .frame,
+.event-photos li.r-4-5 .frame { aspect-ratio: 4 / 5; }
+.event-main-photo.r-1-1 .frame,
+.event-photos li.r-1-1 .frame { aspect-ratio: 1; }
+.event-main-photo.r-3-4 .frame,
+.event-photos li.r-3-4 .frame { aspect-ratio: 3 / 4; }
+.event-main-photo.r-16-9 .frame,
+.event-photos li.r-16-9 .frame { aspect-ratio: 16 / 9; }
+
+.event-page figcaption,
+.event-page .caption {
+  color: var(--soft);
+}
+
+.event-article {
+  display: grid;
+  gap: 1.75rem;
+}
+
+.event-text {
+  display: grid;
+  gap: .9rem;
+  max-width: 40rem;
+  font-size: 1.2rem;
+  line-height: 1.55;
+}
+
+.event-text ul {
+  display: grid;
+  gap: .45rem;
+  padding-left: 1.3rem;
+  list-style: square;
+}
+
+.event-text li::marker {
+  color: var(--accent-text);
+}
+
+.event-text strong {
+  font-weight: 700;
+}
+
+.event-text .script {
+  color: var(--accent-text);
+  font-family: var(--font-name);
+  font-size: 1.35em;
+  font-style: normal;
+  line-height: 1;
+}
+
+.event-photos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  gap: clamp(1rem, 2.5vw, 1.75rem);
+  padding-bottom: clamp(2rem, 5vw, 3.5rem);
+}
+
+@media (min-width: 60rem) {
+  .event-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  }
+
+  .event-layout--text {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

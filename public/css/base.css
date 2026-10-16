@@ -60,6 +60,7 @@
 }
 
 .box--ink,
+.event--soiree,
 .ticker,
 .lightbox,
 .map-facade,
@@ -2442,5 +2443,148 @@ label {
   .menu-toggle {
     gap: .5rem;
     padding-inline: .65rem;
+  }
+}
+
+/* ── L'événement du mois : l'encart à l'arrivée sur le site ─────────────── */
+
+.event-pop {
+  position: fixed;
+  inset: auto 1rem 1rem auto;
+  z-index: 61;
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr);
+  width: min(27rem, calc(100vw - 2rem));
+  border: 1px solid var(--ink);
+  border-top-width: 4px;
+  background: var(--white);
+  color: var(--ink);
+  box-shadow: 0 1.6rem 2.6rem -1.6rem rgba(34, 28, 20, .6);
+  opacity: 0;
+  translate: 0 1.25rem;
+  transition: opacity .35s var(--ease-out), translate .6s var(--ease-out);
+}
+
+.event-pop[hidden] {
+  display: none;
+}
+
+.event-pop.is-open {
+  opacity: 1;
+  translate: 0 0;
+}
+
+.event-pop:not(:has(.event-pop-photo)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.event-pop.event--soiree {
+  border-color: var(--gold-bright);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.event-pop-photo {
+  overflow: hidden;
+  border-right: 1px solid var(--edge);
+  background: var(--paper-2);
+}
+
+.event-pop-photo picture,
+.event-pop-photo img {
+  width: 100%;
+  height: 100%;
+}
+
+.event-pop-photo img {
+  object-fit: cover;
+}
+
+.event-pop-body {
+  display: grid;
+  align-content: start;
+  gap: .45rem;
+  padding: 1rem 3.1rem 1.15rem 1.1rem;
+}
+
+.event-pop-kicker {
+  color: var(--accent-text);
+  font-family: var(--font-label);
+  font-size: .85rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.event-pop-title {
+  font-family: var(--font-poster);
+  font-size: 2.15rem;
+  line-height: .95;
+  text-transform: uppercase;
+  text-wrap: balance;
+}
+
+.event-pop-title em {
+  color: var(--gold-display);
+  font-family: var(--font-name);
+  font-style: normal;
+  text-transform: none;
+}
+
+.event--soiree .event-pop-title em {
+  color: var(--gold-bright);
+}
+
+.event-pop-when {
+  font-weight: 700;
+}
+
+.event-pop-text {
+  color: var(--soft);
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.event-pop .btn {
+  justify-self: start;
+  margin-top: .35rem;
+}
+
+.event-pop-close {
+  position: absolute;
+  top: .3rem;
+  right: .3rem;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background-color .2s ease, color .2s ease;
+}
+
+.event-pop-close:hover {
+  background: var(--edge);
+  color: var(--page-bg);
+}
+
+@media (max-width: 46rem) {
+  /* Au-dessus de la barre « Réserver » du bas de l'écran */
+  .event-pop {
+    inset: auto .75rem calc(3.75rem + env(safe-area-inset-bottom) + .75rem);
+    grid-template-columns: 6.5rem minmax(0, 1fr);
+    width: auto;
+  }
+
+  .event-pop-title {
+    font-size: 1.85rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .event-pop {
+    transition: none;
   }
 }
