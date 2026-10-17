@@ -3,6 +3,7 @@
 const { html } = require('./html');
 const { icon } = require('./icons');
 const { layout } = require('./layout');
+const { eventFeature, eventWhen, plainTitle } = require('./event');
 const { formatShort, formatLong, daysBetween } = require('../time');
 const {
   PAGES, picture, button, splitTitle, kicker, sectionBar, stamp, ticker, edition, capitalize, openBadge, hoursTable,
@@ -32,6 +33,8 @@ function home(site) {
   const soon = (site.closures || []).find(period => period.current || daysBetween(now.date, period.from) <= 15);
 
   const tickerItems = [
+    // L'événement du mois, annoncé dans le bandeau.
+    site.event ? html`<b>${plainTitle(site.event)}${eventWhen(site.event) ? ` · ${eventWhen(site.event)}` : ''}</b>` : '',
     ...closures.flatMap(notice => [notice.closed, notice.reopening]).filter(Boolean).map(text => html`<b>${text}</b>`),
     appointmentOnly ? html`<b>${appointmentOnly}</b>` : '',
     next ? html`Prochain créneau&nbsp;: <b data-next-slot-label>${next.label}</b>` : 'Réservation en ligne',
@@ -122,6 +125,8 @@ function home(site) {
       </ol>
     </nav>
   </section>
+
+  ${eventFeature(site)}
 
   <section class="container section" aria-labelledby="tarifs-titre">
     ${sectionBar('tarifs-titre', 'Les tarifs', pageOf('/prestations'))}

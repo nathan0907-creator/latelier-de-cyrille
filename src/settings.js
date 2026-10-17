@@ -45,7 +45,11 @@ const MAX_BYTES = 1_800_000;
  * Rien n'est lu ni écrit ailleurs que dans le stockage du salon : le même code tourne sur
  * l'ordinateur du salon et en ligne sur Cloudflare.
  */
-function createSettings({ base, store }) {
+/**
+ * keepMedia() : les autres photos déposées encore utilisées (celles de l'événement du mois),
+ * à ne pas effacer avec les photos qui ne servent plus.
+ */
+function createSettings({ base, store, keepMedia = () => [] }) {
   const media = store.media;
   let overrides = store.settings.get() || {};
   let current;
@@ -221,9 +225,9 @@ function createSettings({ base, store }) {
   /** Efface les photos déposées qui ne servent plus nulle part (avec leurs versions réduites). */
   function sweepMedia() {
     const photos = current.photos;
-    const kept = new Set([photos.hero, photos.second, photos.find, ...photos.gallery]
-      .filter(photo => photo && photo.src.startsWith('/media/'))
-      .map(photo => MEDIA_NAME.exec(photo.src.slice(7))?.[1]));
+    const kept = new Set([...[photos.hero, photos.second, photos.find, ...photos.gallery].map(photo => photo && photo.src), ...keepMedia()]
+      .filter(src => src && src.startsWith('/media/'))
+      .map(src => MEDIA_NAME.exec(src.slice(7))?.[1]));
     for (const name of media.list()) {
       const match = MEDIA_NAME.exec(name);
       if (!match || !kept.has(match[1])) media.remove(name);
@@ -288,6 +292,8 @@ function createSettings({ base, store }) {
     setPhotos,
     addPhoto,
     readPhoto,
+    describe,
+    sweepMedia,
     /** Date du dernier changement fait depuis l'espace salon (pour le plan du site). */
     updatedAt: () => overrides.updatedAt || '',
   };

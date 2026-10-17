@@ -317,7 +317,7 @@ ${sprite}
 ${bare ? '' : html`${intro(site)}<span class="scroll-progress" aria-hidden="true" data-scroll-progress></span>`}
 ${bare ? '' : header(site)}
 ${body}
-${bare ? '' : html`${footer(site)}${dock(site)}${cookieNotice()}`}
+${bare ? '' : html`${footer(site)}${dock(site)}${cookieNotice()}${require('./event').eventPopup(site)}`}
 ${data ? html`<script type="application/json" id="page-data">${jsonForScript(data)}</script>` : ''}
 ${bare ? '' : html`<script type="module" src="${asset('/js/site.js')}"></script>`}
 ${scripts.map(src => html`<script type="module" src="${asset(src)}"></script>`)}

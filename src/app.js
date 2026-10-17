@@ -10,6 +10,7 @@ const { createLimiter } = require('./ratelimit');
 const { createStatic, createVersion } = require('./static');
 const { createStats } = require('./stats');
 const { createSettings } = require('./settings');
+const { createSalonEvent, imagesOf } = require('./salon-event');
 const { createHolidays } = require('./holidays');
 const { createClients } = require('./clients');
 const { createMailer, readEmail } = require('./mail');
@@ -37,11 +38,12 @@ function createApp({
   sendPush, mail = {}, mailer: givenMailer,
 }) {
   // La configuration « vivante » : salon.config.js, plus ce que la coiffeuse a réglé depuis son espace.
-  const settings = createSettings({ base, store });
+  const settings = createSettings({ base, store, keepMedia: () => imagesOf(store.salonEvent.get()) });
   const { config } = settings;
   // Les jours fermés : ceux que la coiffeuse a saisis, et les jours fériés (fermés d'office).
   const holidays = createHolidays({ config, store, clock });
   const clients = createClients({ store });
+  const salonEvent = createSalonEvent({ store, clock, describe: settings.describe, sweepMedia: settings.sweepMedia });
   const closedDays = () => holidays.closures();
   const mailer = givenMailer || createMailer({
     apiKey: mail.apiKey, from: mail.from || config.contact.email, name: config.name, replyTo: config.contact.email,
@@ -116,6 +118,8 @@ function createApp({
       // Adresse d'un style ou d'un script, avec son empreinte (voir createVersion).
       asset: file => `${file}?v=${version}`,
       now: state.now,
+      event: salonEvent.current(),
+      eventPreview: pathname === '/evenement' && auth.readSession(req) ? salonEvent.current({ preview: true }) : null,
       status: availability.openStatus(state),
       next: describeSlot(availability.nextSlot({ ...state, service: quickestService() }), state.now),
       // Congés et fermetures à venir, annoncés dans le bandeau de la une.
@@ -379,6 +383,14 @@ function createApp({
 
     if (route === 'GET /api/salon/settings') return json(200, settings.snapshot());
 
+    // L'événement du mois (onglet « Événement » de l'espace salon).
+    if (route === 'GET /api/salon/event') return json(200, salonEvent.snapshot());
+    if (route === 'PUT /api/salon/event') {
+      const result = salonEvent.save(await readJson(req, 64 * 1024));
+      if (!result.ok) return reject(result);
+      return json(200, result.event);
+    }
+
     // Le texte des e-mails aux clients (page « E-mails » de l'espace salon).
     if (route === 'GET /api/salon/mails') return json(200, mails.texts());
     if (route === 'PUT /api/salon/mails') {
@@ -575,7 +587,7 @@ function createApp({
     const absolute = src => (src.startsWith('/') ? `${origin}${src}` : src);
     const photos = config.photos.gallery.filter(photo => photo && photo.src)
       .map(photo => `<image:image><image:loc>${escape(absolute(photo.src))}</image:loc></image:image>`).join('');
-    const paths = [...views.publicPaths, ...config.services.map(service => `/prestations/${service.id}`)];
+    const paths = [...views.publicPaths, ...(salonEvent.current() ? ['/evenement'] : []), ...config.services.map(service => `/prestations/${service.id}`)];
     const urls = paths.map(p => `  <url><loc>${origin}${p === '/' ? '/' : p}</loc><lastmod>${lastModified}</lastmod>${p === '/' || p === '/galerie' ? photos : ''}</url>`).join('\n');
     return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n${urls}\n</urlset>\n`;
   }
@@ -605,6 +617,10 @@ function createApp({
 
     // Une page du journal, ou la page d'une prestation (/prestations/balayage).
     const item = /^\/prestations\/[a-z0-9-]+$/.test(pathname) && serviceById(pathname.slice(13));
+    // L'événement du mois : sa page n'existe que s'il est affiché (ou en aperçu, pour la coiffeuse).
+    if (pathname === '/evenement' && !salonEvent.current({ preview: Boolean(auth.readSession(req)) })) {
+      return sendHtml(req, res, 404, views.notFound(siteContext(pathname, req)), { 'X-Robots-Tag': 'noindex' });
+    }
     const render = views.pages[pathname] || (item && (site => views.service(site, item)));
     if (render) {
       const salon = pathname === '/salon';

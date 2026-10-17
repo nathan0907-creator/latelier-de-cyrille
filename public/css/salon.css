@@ -1708,3 +1708,224 @@
   color: var(--muted);
   font-size: .9rem;
 }
+
+/* ── Événement du mois : le formulaire et son aperçu ───────────────────── */
+
+.event-editor {
+  display: grid;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.event-form {
+  display: grid;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.event-form .field,
+.event-form .field-row {
+  width: 100%;
+}
+
+.event-form-title {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.event-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem .8rem;
+}
+
+.event-check {
+  display: grid;
+  gap: .1rem;
+}
+
+.event-check .field-hint {
+  margin: 0 0 0 1.8rem;
+}
+
+.event-form textarea {
+  min-height: 13rem;
+  resize: vertical;
+}
+
+/* La barre de mise en forme, collée au-dessus du texte */
+.format-bar {
+  display: flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--ink);
+  border-bottom: 0;
+  background: var(--paper-2);
+}
+
+.format-btn {
+  display: grid;
+  place-items: center;
+  width: 2.9rem;
+  height: 2.75rem;
+  border: 0;
+  border-right: 1px solid var(--hair);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color .2s ease, color .2s ease;
+}
+
+.format-btn:hover {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.format-bar + textarea {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.event-preview-col {
+  display: grid;
+  gap: .6rem;
+  min-width: 0;
+}
+
+.event-preview-box {
+  display: grid;
+  gap: 1rem;
+}
+
+/* L'aperçu reprend la rubrique de la une, en petit */
+.event-mini {
+  display: grid;
+  border: 1px solid var(--ink);
+  border-top-width: 4px;
+  background: var(--white);
+  color: var(--ink);
+}
+
+.event-mini--soiree {
+  border-color: var(--gold-bright);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.event-mini-photo {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-bottom: 1px solid var(--ink);
+}
+
+.event-mini-body {
+  display: grid;
+  justify-items: start;
+  gap: .6rem;
+  padding: 1.1rem 1.2rem 1.25rem;
+}
+
+.event-mini-kicker {
+  color: var(--gold);
+  font-family: var(--font-label);
+  font-size: .85rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.event-mini-title {
+  font-family: var(--font-poster);
+  font-size: 2.6rem;
+  line-height: .95;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.event-mini-title em,
+.event-mini-text .script {
+  color: var(--gold-display);
+  font-family: var(--font-name);
+  font-style: normal;
+  text-transform: none;
+}
+
+.event-mini-when {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  color: var(--gold);
+  font-family: var(--font-label);
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.event-mini--soiree .event-mini-kicker,
+.event-mini--soiree .event-mini-when,
+.event-mini--soiree .event-mini-title em {
+  color: var(--gold-bright);
+}
+
+.event-mini-summary {
+  font-size: 1.05rem;
+  line-height: 1.4;
+}
+
+.event-mini-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.event-mini-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .55rem .9rem;
+  border: 1px solid var(--gold-bright);
+  background: var(--gold-bright);
+  color: var(--ink);
+  font-family: var(--font-label);
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.event-mini-btn--outline {
+  border-color: currentColor;
+  background: transparent;
+  color: inherit;
+}
+
+.event-mini-text {
+  display: grid;
+  gap: .7rem;
+  padding: 1rem 1.2rem;
+  border: 1px solid var(--hair);
+  background: var(--white);
+  line-height: 1.5;
+}
+
+.event-mini-text ul {
+  display: grid;
+  gap: .3rem;
+  padding-left: 1.2rem;
+  list-style: square;
+}
+
+.event-mini-text .script {
+  font-size: 1.3em;
+}
+
+@media (min-width: 64rem) {
+  .event-editor {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  }
+
+  .event-preview-col {
+    position: sticky;
+    top: 5.5rem;
+  }
+}

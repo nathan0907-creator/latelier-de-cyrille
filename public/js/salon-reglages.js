@@ -63,7 +63,8 @@ async function readImage(file) {
   return { source: image, width: image.naturalWidth, height: image.naturalHeight };
 }
 
-async function preparePhoto(file) {
+/** Réduit une photo et la décline en plusieurs largeurs (servi aussi à l'onglet Événement). */
+export async function preparePhoto(file) {
   const image = await readImage(file);
   const scale = Math.min(1, 1600 / image.width, 2000 / image.height);
   const full = Math.round(image.width * scale);
