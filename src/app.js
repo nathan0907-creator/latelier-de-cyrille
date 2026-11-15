@@ -13,6 +13,7 @@ const { createSettings } = require('./settings');
 const { createSalonEvent, imagesOf } = require('./salon-event');
 const { createHolidays } = require('./holidays');
 const { createClients } = require('./clients');
+const { createStaff } = require('./staff');
 const { createMailer, readEmail } = require('./mail');
 const { createMails } = require('./mails');
 const { HttpError, clientIp, isSecure, sameOrigin, readJson, applySecurityHeaders, send, sendJson, sendHtml } = require('./http');
@@ -43,6 +44,7 @@ function createApp({
   // Les jours fermés : ceux que la coiffeuse a saisis, et les jours fériés (fermés d'office).
   const holidays = createHolidays({ config, store, clock });
   const clients = createClients({ store });
+  const staff = createStaff({ store, clock });
   const salonEvent = createSalonEvent({ store, clock, describe: settings.describe, sweepMedia: settings.sweepMedia });
   const closedDays = () => holidays.closures();
   const mailer = givenMailer || createMailer({
@@ -172,7 +174,9 @@ function createApp({
       const date = searchParams.get('date');
       if (!service || !isValidDate(date)) return json(400, { error: 'Paramètres invalides.' });
       const mode = searchParams.get('salon') === '1' && auth.readSession(req) ? 'salon' : 'public';
-      const { closed, slots } = availability.daySlots({ ...snapshot(), service, date, mode });
+      // Au salon : les heures libres sur la ligne de l'employée choisie (sinon, celle de la coiffeuse).
+      const person = mode === 'salon' ? searchParams.get('staff') || '' : '';
+      const { closed, slots } = availability.daySlots({ ...snapshot(), service, date, mode, staff: person });
       return json(200, { date, closed, slots: slots.map(({ time, available }) => ({ time, available })) });
     }
 
@@ -352,6 +356,7 @@ function createApp({
         closures: store.closures.all(),
         holidays: holidays.state(),
         clients: clients.all(),
+        staff: staff.all(),
         // La carte et les horaires du moment : ils peuvent avoir changé depuis l'ouverture de la page.
         services: config.services.map(({ id, name, duration, price, priceFrom, category }) => ({ id, name, duration, price, priceFrom, category })),
         hours: config.hours,
@@ -377,6 +382,40 @@ function createApp({
       if (!result.ok) return json(result.status, { error: result.error });
       events.send('salon', 'clients', { clients: result.clients });
       return json(200, { clients: result.clients });
+    }
+
+    // Une fiche créée à la main ({ name, phone, note }), avant tout rendez-vous.
+    if (route === 'POST /api/salon/clients') {
+      const result = clients.create(await readJson(req));
+      if (!result.ok) return json(result.status, { error: result.error, fields: result.fields, code: result.code, key: result.key });
+      events.send('salon', 'clients', { clients: result.clients });
+      return json(201, { key: result.key, clients: result.clients });
+    }
+
+    // Supprimer une fiche créée à la main, sans rendez-vous ({ key }).
+    if (route === 'DELETE /api/salon/clients') {
+      const result = clients.remove((await readJson(req)).key);
+      if (!result.ok) return reject(result);
+      events.send('salon', 'clients', { clients: result.clients });
+      return json(200, { clients: result.clients });
+    }
+
+    // Les employées : une ligne chacune dans l'agenda ({ name } pour en ajouter une).
+    if (route === 'POST /api/salon/staff') {
+      const result = staff.add(await readJson(req));
+      if (!result.ok) return reject(result);
+      events.send('salon', 'staff', { staff: result.staff });
+      return json(201, { person: result.person, staff: result.staff });
+    }
+
+    const staffRoute = /^\/api\/salon\/staff\/([\w-]{4,40})$/.exec(pathname);
+    if (staffRoute && method === 'DELETE') {
+      const result = staff.remove(staffRoute[1]);
+      if (!result.ok) return reject(result);
+      events.send('salon', 'staff', { staff: result.staff });
+      // Ses rendez-vous à venir sont revenus sur la ligne de la coiffeuse.
+      for (const booking of result.moved) announce('updated', booking);
+      return json(200, { staff: result.staff, moved: result.moved.length });
     }
 
     // — Réglages : ce que la coiffeuse modifie elle-même —
@@ -465,6 +504,13 @@ function createApp({
         events.send('salon', 'clients', { clients: clients.mark(result.booking, `Rendez-vous non honoré (${whenOf(result.booking)})`) });
         announce('updated', result.booking);
         return json(200, { booking: result.booking });
+      }
+      // Une autre personne s'en occupe : le rendez-vous change de ligne dans l'agenda.
+      if (body.staff !== undefined) {
+        const assigned = bookings.assign(bookingRoute[1], body.staff, { force });
+        if (!assigned.ok) return reject(assigned);
+        announce('updated', assigned.booking);
+        return json(200, { booking: assigned.booking });
       }
       // Une nouvelle durée : le rendez-vous est rallongé ou raccourci.
       if (body.duration !== undefined) {
@@ -728,7 +774,7 @@ function createApp({
     events.close();
   }
 
-  return { handle, close, maintain, tick, nextDue, auth, events, reminders, mails, stats, settings, holidays, clients, config };
+  return { handle, close, maintain, tick, nextDue, auth, events, reminders, mails, stats, settings, holidays, clients, staff, bookings, config };
 }
 
 module.exports = { createApp };

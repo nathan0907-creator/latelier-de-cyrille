@@ -355,6 +355,46 @@
   text-align: right;
 }
 
+/* Une colonne par personne du salon (la coiffeuse, puis ses employées). */
+.timeline-cells {
+  display: grid;
+  grid-template-columns: repeat(var(--lines, 1), minmax(0, 1fr));
+}
+
+.timeline-wrap .timeline-cells > * + * {
+  border-left: 1px solid var(--hair);
+}
+
+.timeline-wrap .timeline-add {
+  padding-left: .6rem;
+}
+
+.timeline-heads {
+  display: grid;
+  grid-template-columns: 4rem repeat(var(--lines, 1), minmax(0, 1fr));
+  border: 1px solid var(--ink);
+  border-bottom: 0;
+  background: var(--ink);
+  color: var(--paper, #fff);
+}
+
+.timeline-head {
+  overflow: hidden;
+  padding: .45rem .6rem;
+  border-left: 1px solid rgba(255, 255, 255, .25);
+  font-family: var(--font-label);
+  font-size: .95rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.timeline-wrap .block {
+  padding: .3rem .5rem;
+}
+
 .timeline-add {
   display: grid;
   align-items: center;
@@ -1928,4 +1968,47 @@
     position: sticky;
     top: 5.5rem;
   }
+}
+
+/* ── Employées ─────────────────────────────────────────────────────────── */
+
+.staff-list {
+  margin-bottom: 1.5rem;
+}
+
+@media (min-width: 46rem) {
+  .row--staff {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+.row--asking {
+  border-color: var(--ink);
+}
+
+.staff-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: .75rem 1rem;
+  max-width: 34rem;
+  padding: 1.1rem;
+  border: 1px dashed var(--ink);
+}
+
+.staff-add .field {
+  flex: 1 1 14rem;
+  margin: 0;
+}
+
+.staff-add .notice {
+  flex-basis: 100%;
+}
+
+/* Fichier clients : le bouton « Nouvelle fiche » à côté de la recherche. */
+.clients-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .75rem;
 }

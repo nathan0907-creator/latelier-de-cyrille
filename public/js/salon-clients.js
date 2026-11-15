@@ -20,8 +20,10 @@ const digitsOf = phone => String(phone || '').replace(/\D/g, '');
  * Range les rendez-vous par personne. Un rendez-vous noté sans téléphone rejoint la fiche qui porte
  * le même nom, quand il n'y en a qu'une ; sinon il forme une fiche à part, rangée par nom.
  */
-export function groupClients(bookings, today) {
+export function groupClients(bookings, today, records = {}) {
   const byKey = new Map();
+  // Les fiches créées à la main existent avant leur premier rendez-vous.
+  for (const [key, record] of Object.entries(records)) if (record.manual) byKey.set(key, { key, bookings: [], record });
   const add = (key, booking) => {
     if (!byKey.has(key)) byKey.set(key, { key, bookings: [] });
     byKey.get(key).bookings.push(booking);
@@ -30,7 +32,9 @@ export function groupClients(bookings, today) {
 
   const named = new Map(); // nom → fiches avec téléphone qui le portent
   for (const client of byKey.values()) {
-    for (const name of new Set(client.bookings.map(b => normalizeName(b.name)))) {
+    if (!client.key.startsWith('tel:')) continue;
+    const names = [...client.bookings.map(b => b.name), client.record?.name].filter(Boolean);
+    for (const name of new Set(names.map(normalizeName))) {
       if (!named.has(name)) named.set(name, []);
       named.get(name).push(client.key);
     }
@@ -50,12 +54,14 @@ export function groupClients(bookings, today) {
     const counts = new Map();
     for (const booking of kept) counts.set(booking.serviceName, (counts.get(booking.serviceName) || 0) + 1);
     const usual = [...counts].sort((a, b) => b[1] - a[1])[0];
+    const name = all[0]?.name || client.record.name;
     return {
       key: client.key,
-      name: all[0].name,
-      sortName: normalizeName(all[0].name),
-      names: new Set(all.map(b => normalizeName(b.name))),
-      phone: all.find(b => b.phone)?.phone || '',
+      name,
+      sortName: normalizeName(name),
+      names: new Set([...all.map(b => b.name), client.record?.name].filter(Boolean).map(normalizeName)),
+      phone: all.find(b => b.phone)?.phone || client.record?.phone || '',
+      manual: Boolean(client.record),
       bookings: all,
       past,
       upcoming,
@@ -75,7 +81,7 @@ export function createClientsView({ state, call, toast, field, view, openSheet, 
   let count = null;
   let open = null; // la fiche ouverte : { key, sheet, dirty }
 
-  const clients = () => groupClients(state.bookings, state.today);
+  const clients = () => groupClients(state.bookings, state.today, state.clients);
   const saved = key => state.clients[key] || { note: '', blocked: false };
   const blockedBadge = () => h('span', { class: 'badge badge--blocked' }, 'Ne plus reprendre');
 
@@ -104,9 +110,11 @@ export function createClientsView({ state, call, toast, field, view, openSheet, 
     count = h('p', { class: 'clients-count', 'aria-live': 'polite' });
     body = h('div', {});
     view().replaceChildren(
-      h('p', { class: 'view-lead' }, 'Chaque personne qui a pris rendez-vous a sa fiche : ses coordonnées, ses rendez-vous, et vos notes. Elle se remplit toute seule.'),
+      h('p', { class: 'view-lead' }, 'Chaque personne qui a pris rendez-vous a sa fiche : ses coordonnées, ses rendez-vous, et vos notes. Pour quelqu’un qui n’en a pas encore, créez-la à la main.'),
       h('div', { class: 'list-tools' }, chips,
-        h('label', { class: 'search' }, icon('search'), h('span', { class: 'sr-only' }, 'Rechercher une fiche'), input)),
+        h('div', { class: 'clients-tools' },
+          h('label', { class: 'search' }, icon('search'), h('span', { class: 'sr-only' }, 'Rechercher une fiche'), input),
+          h('button', { type: 'button', class: 'btn btn--small btn--accent', onclick: () => openNewClient() }, icon('plus'), h('span', {}, 'Nouvelle fiche')))),
       count,
       body);
     render();
@@ -139,6 +147,61 @@ export function createClientsView({ state, call, toast, field, view, openSheet, 
         saved(client.key).note ? h('p', { class: 'row-note' }, saved(client.key).note.split('\n')[0]) : null),
       h('div', { class: 'row-actions' },
         h('button', { type: 'button', class: 'btn btn--small btn--outline', 'aria-label': `Fiche de ${client.name}`, onclick: () => openClient(client.key) }, h('span', {}, 'Fiche'))))));
+  }
+
+  /**
+   * Une fiche créée à la main : le nom, le téléphone, une note. « Créer et prendre rendez-vous »
+   * enchaîne sur la saisie d'un rendez-vous, nom et téléphone déjà remplis.
+   */
+  function openNewClient() {
+    const sheet = openSheet({ eyebrow: 'Fichier clients', title: 'Nouvelle fiche' });
+    const error = h('p', { class: 'notice notice--error', role: 'alert', hidden: true });
+    const name = h('input', { type: 'text', maxlength: '60', autocomplete: 'off', required: true });
+    const phone = h('input', { type: 'tel', inputmode: 'tel', maxlength: '30', autocomplete: 'off' });
+    const note = h('textarea', { rows: '3', maxlength: String(NOTE_MAX), placeholder: 'Formule de couleur, habitudes, allergie…' });
+    const create = h('button', { type: 'submit', class: 'btn btn--small', value: 'fiche' }, h('span', {}, 'Créer la fiche'), icon('check'));
+    const createAndBook = h('button', { type: 'submit', class: 'btn btn--small btn--outline', value: 'rdv' }, icon('plus'), h('span', {}, 'Créer et prendre rendez-vous'));
+    const actions = h('div', { class: 'sheet-actions' }, create, createAndBook);
+
+    const form = h('form', { class: 'sheet-form client-form', novalidate: true },
+      field({ id: 'nouvelle-fiche-nom', label: 'Nom du client', control: name }),
+      field({ id: 'nouvelle-fiche-telephone', label: 'Téléphone', optional: true, control: phone }),
+      field({ id: 'nouvelle-fiche-note', label: 'Vos notes', optional: true, control: note }),
+      error,
+      actions);
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      error.hidden = true;
+      const book = event.submitter === createAndBook;
+      if (!name.value.trim()) {
+        error.textContent = 'Indiquez le nom du client.';
+        error.hidden = false;
+        name.focus();
+        return;
+      }
+      create.disabled = true;
+      createAndBook.disabled = true;
+      try {
+        const result = await call('/api/salon/clients', { method: 'POST', body: { name: name.value, phone: phone.value, note: note.value } });
+        state.clients = result.clients;
+        render();
+        const client = clients().find(c => c.key === result.key);
+        toast(`La fiche de ${client?.name || name.value.trim()} est créée.`);
+        if (book) openNewBooking({ name: client?.name || name.value.trim(), phone: client?.phone || '' });
+        else openClient(result.key);
+      } catch (err) {
+        error.replaceChildren(err.data?.fields ? Object.values(err.data.fields).join(' ') : err.message);
+        // Elle existe déjà : un lien pour l'ouvrir.
+        if (err.data?.code === 'exists' && err.data.key) {
+          error.append(' ', h('button', { type: 'button', class: 'link', onclick: () => openClient(err.data.key) }, 'Ouvrir sa fiche'));
+        }
+        error.hidden = false;
+        create.disabled = false;
+        createAndBook.disabled = false;
+      }
+    });
+    sheet.body.replaceChildren(form);
+    name.focus();
   }
 
   /** La fiche d'un rendez-vous donné (pour y venir depuis l'agenda). */
@@ -205,6 +268,24 @@ export function createClientsView({ state, call, toast, field, view, openSheet, 
         h('span', { class: 'history-what' }, h('span', {}, booking.serviceName), h('span', {}, priceText(booking))),
         booking.date >= state.today || !isActive(booking) ? statusBadge(booking) : null)));
     const spent = client.past.reduce((sum, booking) => sum + booking.price, 0);
+    // Une fiche créée à la main, sans rendez-vous : on peut la supprimer.
+    const removable = client.manual && !client.bookings.length;
+    const remove = async () => {
+      try {
+        const result = await call('/api/salon/clients', { method: 'DELETE', body: { key: client.key } });
+        state.clients = result.clients;
+        entry.sheet.dialog.close();
+        toast(`La fiche de ${client.name} est supprimée.`);
+        render();
+      } catch (err) {
+        error.textContent = err.message;
+        error.hidden = false;
+      }
+    };
+    const removeBox = h('div', { class: 'sheet-actions', hidden: true },
+      h('p', { class: 'sheet-question' }, `Supprimer la fiche de ${client.name} ?`),
+      h('button', { type: 'button', class: 'btn btn--small btn--danger', onclick: remove }, h('span', {}, 'Oui, supprimer'), icon('trash')),
+      h('button', { type: 'button', class: 'btn btn--small btn--outline', onclick: () => { removeBox.hidden = true; } }, h('span', {}, 'Non')));
 
     open.sheet.heading.textContent = client.name;
     open.sheet.body.replaceChildren(...[
@@ -222,10 +303,12 @@ export function createClientsView({ state, call, toast, field, view, openSheet, 
       form,
       h('section', { class: 'history', 'aria-labelledby': 'fiche-historique' },
         h('h3', { id: 'fiche-historique', class: 'history-title' }, 'Historique', h('small', {}, plural(client.bookings.length, 'rendez-vous', 'rendez-vous'))),
-        h('ul', { class: 'history-list' }, history)),
+        history.length ? h('ul', { class: 'history-list' }, history) : h('p', { class: 'field-hint' }, 'Aucun rendez-vous pour le moment.')),
       h('div', { class: 'sheet-actions' },
-        h('button', { type: 'button', class: 'btn btn--small btn--outline', onclick: () => openNewBooking({ name: client.name, phone: client.phone }) },
-          icon('plus'), h('span', {}, 'Nouveau rendez-vous'))),
+        h('button', { type: 'button', class: `btn btn--small${history.length ? ' btn--outline' : ''}`, onclick: () => openNewBooking({ name: client.name, phone: client.phone }) },
+          icon('plus'), h('span', {}, 'Nouveau rendez-vous')),
+        removable ? h('button', { type: 'button', class: 'btn btn--small btn--outline', onclick: () => { removeBox.hidden = false; } }, icon('trash'), h('span', {}, 'Supprimer la fiche')) : null),
+      removable ? removeBox : null,
     ].filter(Boolean));
   }
 

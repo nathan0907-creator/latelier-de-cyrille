@@ -2,7 +2,7 @@
 
 const crypto = require('node:crypto');
 const { isValidDate, toMinutes, fromMinutes, addDays, daysBetween } = require('./time');
-const { slotProblem, hasConflict, daySlots, pausesOf } = require('./availability');
+const { slotProblem, hasConflict, daySlots, pausesOf, staffOf } = require('./availability');
 const { readEmail } = require('./mail');
 
 /** Minutes avant le début d'un rendez-vous (négatif : commencé). */
@@ -31,6 +31,13 @@ const failure = (status, error, extra = {}) => ({ ok: false, status, error, ...e
 
 /** closures : donne tous les jours fermés (fermetures saisies et jours fériés, voir src/holidays.js). */
 function createBookings({ config, store, clock, closures = () => store.closures.all(), acceptEmail = false, isBlocked = () => false }) {
+  /** « » (la coiffeuse) ou l'identifiant d'une employée enregistrée ; null si l'employée n'existe pas. */
+  const readStaff = value => {
+    const id = typeof value === 'string' ? value : '';
+    return !id || store.staff.all().some(person => person.id === id) ? id : null;
+  };
+
+
   /**
    * Crée un rendez-vous. mode « public » : réservation en ligne (téléphone obligatoire,
    * délai minimum, limite par numéro). mode « salon » : saisi par la coiffeuse.
@@ -58,12 +65,15 @@ function createBookings({ config, store, clock, closures = () => store.closures.
       if (!email) fields.email = 'Indiquez une adresse e-mail valide, par exemple prenom.nom@gmail.com.';
     }
     const note = cleanText(input.note, 200);
+    // En ligne, c'est toujours la coiffeuse ; au salon, elle choisit la ligne (une employée).
+    const staff = mode === 'salon' ? readStaff(input.staff) : '';
+    if (staff === null) fields.staff = "Cette employée n'existe plus.";
     if (Object.keys(fields).length) return failure(400, 'Vérifiez les informations saisies.', { fields });
 
     const now = clock();
     const problem = slotProblem({
       config, bookings: store.bookings.all(), closures: closures(),
-      service, date: input.date, start, now, mode,
+      service, date: input.date, start, now, mode, staff,
     });
     // La coiffeuse peut prendre deux clientes à la fois : force, depuis son espace seulement.
     if (problem === 'taken' && !(mode === 'salon' && input.force === true)) {
@@ -100,6 +110,7 @@ function createBookings({ config, store, clock, closures = () => store.closures.
       phone,
       ...(email && { email }),
       note,
+      ...(staff && { staff }),
       // L'adresse du site, pour les liens des e-mails envoyés plus tard (le rappel de la veille).
       ...(site && { site }),
       status: mode === 'salon' ? 'confirmed' : 'pending',
@@ -191,7 +202,7 @@ function createBookings({ config, store, clock, closures = () => store.closures.
     if (!isValidDate(date)) return failure(400, 'Date invalide.');
     const day = daySlots({
       config, bookings: store.bookings.all().filter(b => b.id !== id), closures: closures(),
-      service: booking, date, now: clock(), mode: 'salon',
+      service: booking, date, now: clock(), mode: 'salon', staff: staffOf(booking),
     });
     return { ok: true, closed: day.closed, slots: day.slots.map(({ time, available }) => ({ time, available })) };
   }
@@ -209,12 +220,28 @@ function createBookings({ config, store, clock, closures = () => store.closures.
     if (date < clock().date) return failure(400, 'Choisissez une date à venir.');
     const problem = slotProblem({
       config, bookings: store.bookings.all().filter(b => b.id !== id), closures: closures(),
-      service: booking, date, start, now: clock(), mode: 'salon',
+      service: booking, date, start, now: clock(), mode: 'salon', staff: staffOf(booking),
     });
     if (problem === 'taken' && !force) return failure(409, 'Ce créneau est déjà pris par un autre rendez-vous.', { code: 'slot_taken' });
     if (problem && problem !== 'taken') return failure(409, 'Le salon est fermé à ce moment-là.', { code: 'slot_unavailable' });
     const from = { date: booking.date, time: booking.time };
     return { ok: true, from, booking: store.bookings.update(id, { date, time: fromMinutes(start), start }) };
+  }
+
+  /**
+   * Confie le rendez-vous à une autre personne du salon (une autre ligne de l'agenda). force : même
+   * si elle est déjà prise à ce moment-là (les deux rendez-vous se superposent sur sa ligne).
+   */
+  function assign(id, value, { force = false } = {}) {
+    const booking = store.bookings.get(id);
+    if (!booking) return failure(404, 'Rendez-vous introuvable.');
+    const staff = readStaff(value);
+    if (staff === null) return failure(400, "Cette employée n'existe plus.");
+    if (!force && booking.status !== 'cancelled' && staff !== staffOf(booking)
+      && hasConflict(store.bookings.all(), booking.date, booking.start, { ...booking, staff }, booking.id)) {
+      return failure(409, 'Elle a déjà un rendez-vous à ce moment-là.', { code: 'slot_taken' });
+    }
+    return { ok: true, booking: store.bookings.update(id, { staff }) };
   }
 
   function remove(id) {
@@ -235,7 +262,7 @@ function createBookings({ config, store, clock, closures = () => store.closures.
     status: b.status, attending: Boolean(b.attending), cancelledBy: b.status === 'cancelled' ? b.cancelledBy || 'salon' : '',
   });
 
-  return { create, setStatus, cancelByClient, markNoShow, attend, resize, move, movableSlots, remove, purgeOld, publicView };
+  return { create, setStatus, cancelByClient, markNoShow, attend, resize, move, movableSlots, assign, remove, purgeOld, publicView };
 }
 
 module.exports = { createBookings, normalizePhone, cleanText };
