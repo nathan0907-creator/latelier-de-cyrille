@@ -10,6 +10,7 @@ import { createSettingsViews, preparePhoto } from './salon-reglages.js';
 import { createEventView } from './salon-evenement.js';
 import { createClientsView } from './salon-clients.js';
 import { createMailsView } from './salon-mails.js';
+import { createStaffView } from './salon-equipe.js';
 
 const root = document.querySelector('[data-salon]');
 const toastBox = document.querySelector('[data-toasts]');
@@ -23,6 +24,7 @@ const state = {
   bookings: [],
   closures: [],
   clients: {}, // notes et « ne plus reprendre », par clé de fiche
+  staff: [], // les employées : une ligne chacune dans l'agenda, après celle de la coiffeuse
   holidays: { auto: true, list: [] }, // jours fériés à venir, fermés d'office sauf ceux qu'elle ouvre
   tab: 'day',
   day: '',
@@ -51,9 +53,9 @@ const telHref = phone => `tel:${phone.replace(/[^\d+]/g, '')}`;
 const hoursLabel = booking => `${frTime(booking.start)} – ${frTime(booking.start + booking.duration)}`;
 const whenLabel = booking => `${capitalize(formatLong(booking.date))} à ${frTime(booking.start)}`;
 /** « Les deux rendez-vous auront lieu en même temps, avec Léa Dupont (10h00 – 10h30). » */
-function overlapNote(date, time, duration, exceptId = '') {
+function overlapNote(date, time, duration, exceptId = '', staff = '') {
   const start = toMinutes(time);
-  const others = state.bookings.filter(b => b.id !== exceptId && isActive(b) && b.date === date
+  const others = state.bookings.filter(b => b.id !== exceptId && isActive(b) && b.date === date && staffIdOf(b) === staff
     && b.start < start + duration && start < b.start + b.duration);
   return `Les deux rendez-vous auront lieu en même temps${others.length ? `, avec ${others.map(b => `${b.name} (${hoursLabel(b)})`).join(', ')}` : ''}.`;
 }
@@ -87,6 +89,13 @@ function closureOn(date) {
   const holiday = state.holidays.list.find(day => day.date === date && !day.open);
   return holiday ? { date, reason: `jour férié (${holiday.name})` } : null;
 }
+
+/** Les lignes de l'agenda : la coiffeuse (id « »), puis ses employées. */
+const OWNER = config.owner || 'La coiffeuse';
+const people = () => [{ id: '', name: OWNER }, ...state.staff];
+/** La ligne d'un rendez-vous (une employée supprimée entre-temps : celle de la coiffeuse). */
+const staffIdOf = booking => (state.staff.some(p => p.id === booking.staff) ? booking.staff : '');
+const staffName = booking => people().find(p => p.id === staffIdOf(booking)).name;
 
 const STATUS = { pending: 'À confirmer', confirmed: 'Confirmé', cancelled: 'Annulé' };
 const statusBadge = booking => h('span', { class: `badge badge--${booking.status}` }, STATUS[booking.status]);
@@ -384,6 +393,7 @@ async function loadData() {
   state.bookings = data.bookings;
   state.closures = data.closures;
   state.clients = data.clients || {};
+  state.staff = data.staff || [];
   state.holidays = data.holidays || state.holidays;
   // La carte et les horaires peuvent avoir été modifiés depuis l'ouverture de la page.
   config.services = data.services;
@@ -469,6 +479,12 @@ function connect() {
     refresh();
   });
 
+  // Une employée ajoutée ou supprimée depuis un autre appareil.
+  source.addEventListener('staff', event => {
+    state.staff = JSON.parse(event.data).staff;
+    refresh();
+  });
+
   source.addEventListener('closures', event => {
     const data = JSON.parse(event.data);
     state.closures = data.closures;
@@ -499,12 +515,13 @@ const TABS = [
   { key: 'day', label: 'Journée', icon: 'calendar' },
   { key: 'list', label: 'Rendez-vous', icon: 'list' },
   { key: 'clients', label: 'Clients', icon: 'users' },
+  { key: 'staff', label: 'Employées', icon: 'scissors' },
   { key: 'closures', label: 'Fermetures', icon: 'ban' },
   { key: 'prices', label: 'Tarifs', icon: 'tag' },
   { key: 'hours', label: 'Horaires', icon: 'clock' },
   { key: 'photos', label: 'Photos', icon: 'image' },
   { key: 'event', label: 'Événement', icon: 'star' },
-  { key: 'mails', label: 'E-mails', icon: 'mail' },
+  { key: 'mails', label: 'E-mails et SMS', icon: 'mail' },
   { key: 'audience', label: 'Fréquentation', icon: 'eye' },
 ];
 
@@ -529,6 +546,9 @@ const clientsView = createClientsView({
   state, call, toast, field, openSheet, openDetail, openNewBooking, statusBadge, priceText, telHref,
   view: () => refs.view,
 });
+
+// Les employées : ajouter ou supprimer une ligne de l'agenda.
+const staffView = createStaffView({ state, call, toast, field, view: () => refs.view, ownerName: OWNER });
 
 function mountDashboard() {
   refs.live = h('span', { class: 'salon-live' }, h('span', { class: 'dot', 'aria-hidden': 'true' }), h('span', {}, 'En direct'));
@@ -586,6 +606,7 @@ const VIEWS = {
   day: { mount: mountDay, render: renderDay },
   list: { mount: mountList, render: renderList },
   clients: { mount: clientsView.mount, render: () => {} }, // redessiné par refresh(), avec la fiche ouverte
+  staff: { mount: staffView.mount, render: staffView.render },
   closures: { mount: mountClosures, render: renderClosures },
   audience: { mount: mountAudience, render: () => {} },
   // Ces vues sont des formulaires : l'arrivée d'un rendez-vous ne doit pas les redessiner.
@@ -680,22 +701,31 @@ function timeline(date, ranges, bookings) {
     to = Math.max(to, Math.ceil((booking.start + booking.duration) / step) * step);
   }
 
+  // Une ligne par personne (la coiffeuse, puis ses employées), côte à côte.
+  const lines = people();
+  const lineCount = lines.length;
   const rows = [];
   for (let minute = from; minute < to; minute += step) {
     const open = ranges.some(range => minute >= range.start && minute < range.end);
     rows.push(h('div', { class: `timeline-row${open ? '' : ' is-closed'}${minute % 60 === 0 ? ' is-hour' : ''}` },
       h('span', { class: 'timeline-time' }, minute % 60 === 0 ? frTime(minute) : ''),
-      open && date >= state.today
+      h('div', { class: 'timeline-cells' }, lines.map(person => (open && date >= state.today
         ? h('button', {
-          type: 'button', class: 'timeline-add', 'aria-label': `Ajouter un rendez-vous à ${frTime(minute)}`,
-          onclick: () => openNewBooking({ date, time: fromMinutes(minute) }),
+          type: 'button', class: 'timeline-add',
+          'aria-label': `Ajouter un rendez-vous${lineCount > 1 ? ` avec ${person.name}` : ''} à ${frTime(minute)}`,
+          onclick: () => openNewBooking({ date, time: fromMinutes(minute), staff: person.id }),
         }, icon('plus'))
-        : null));
+        : h('span', { class: 'timeline-cell' }))))));
   }
 
-  const columns = sideBySide(bookings);
+  // Sur chaque ligne, les rendez-vous superposés se placent côte à côte.
+  const columns = new Map();
+  for (const person of lines) {
+    for (const [id, place] of sideBySide(bookings.filter(b => staffIdOf(b) === person.id))) columns.set(id, place);
+  }
   const layer = h('div', { class: 'timeline-layer' }, bookings.map(booking => {
     const { column, count } = columns.get(booking.id);
+    const line = lines.findIndex(person => person.id === staffIdOf(booking));
     const block = h('button', {
       type: 'button',
       class: `block block--${booking.status}${state.fresh.has(booking.id) ? ' is-fresh' : ''}`,
@@ -710,10 +740,11 @@ function timeline(date, ranges, bookings) {
     const place = (el, begin, end) => {
       el.style.top = `calc(${(booking.start + begin - from) / step} * var(--row-h))`;
       el.style.height = `calc(${(end - begin) / step} * var(--row-h) - 4px)`;
-      // Deux rendez-vous au même moment (superposés par la coiffeuse) : côte à côte.
-      if (count > 1) {
-        el.style.left = `calc(.4rem + (100% - .8rem) * ${column} / ${count})`;
-        el.style.right = `calc(.4rem + (100% - .8rem) * ${count - column - 1} / ${count} + 3px)`;
+      // Dans la colonne de sa personne ; deux rendez-vous au même moment (superposés) : côte à côte.
+      if (count > 1 || lineCount > 1) {
+        const pad = lineCount > 1 ? '.2rem' : '.4rem';
+        el.style.left = `calc(${pad} + 100% * ${(line + column / count) / lineCount})`;
+        el.style.right = `calc(${pad} + 100% * ${(lineCount - line - 1 + (count - column - 1) / count) / lineCount}${count > 1 ? ' + 3px' : ''})`;
       }
       return el;
     };
@@ -737,7 +768,15 @@ function timeline(date, ranges, bookings) {
     refs.nowLine.dataset.to = String(to);
     layer.append(refs.nowLine);
   }
-  return h('div', { class: 'timeline' }, rows, layer);
+  const grid = h('div', { class: 'timeline' }, rows, layer);
+  if (lineCount === 1) return grid;
+  // Le nom de chaque ligne, au-dessus de sa colonne.
+  const wrap = h('div', { class: 'timeline-wrap' },
+    h('div', { class: 'timeline-heads', 'aria-hidden': 'true' },
+      h('span', {}), lines.map(person => h('span', { class: 'timeline-head' }, person.name))),
+    grid);
+  wrap.style.setProperty('--lines', String(lineCount));
+  return wrap;
 }
 
 /** Les moments où un rendez-vous occupe la coiffeuse (hors temps de pose), en minutes. */
@@ -852,6 +891,7 @@ function bookingRow(booking) {
     h('div', { class: 'row-main' },
       h('p', { class: 'row-name' }, h('span', {}, booking.name), statusBadge(booking)),
       h('p', { class: 'row-meta' }, `${booking.serviceName} · ${priceText(booking)}`,
+        state.staff.length ? ` · avec ${booking.staffName || staffName(booking)}` : null,
         booking.phone ? [' · ', h('a', { class: 'link', href: telHref(booking.phone) }, booking.phone)] : null),
       booking.note ? h('p', { class: 'row-note' }, `« ${booking.note} »`) : null),
     h('div', { class: 'row-actions' },
@@ -1424,7 +1464,7 @@ function renderDetail({ focus = false } = {}) {
       const overlapping = taken.has(slot.value);
       label.textContent = overlapping ? (confirming ? 'Confirmer en superposant' : 'Superposer ici')
         : confirming ? 'Confirmer à cette heure' : 'Déplacer ici';
-      note.textContent = overlapping ? overlapNote(day.value, slot.value, booking.duration, booking.id) : '';
+      note.textContent = overlapping ? overlapNote(day.value, slot.value, booking.duration, booking.id, staffIdOf(booking)) : '';
     };
     slot.addEventListener('change', describe);
     go.disabled = true;
@@ -1482,9 +1522,37 @@ function renderDetail({ focus = false } = {}) {
   });
   const step = config.slotStep;
 
+  /** Confier le rendez-vous à une autre personne : il passe sur sa ligne de l'agenda. */
+  const assign = (staff, force = false) => detailAction(async () => {
+    try {
+      const result = await call(`/api/salon/bookings/${booking.id}`, { method: 'PATCH', body: { staff, force } });
+      upsert(result.booking);
+      toast(`${booking.name} · ${whenLabel(booking)}`, { title: `Avec ${staffName(result.booking)}` });
+    } catch (err) {
+      if (err.data?.code !== 'slot_taken') throw err;
+      // Elle a déjà quelqu'un à ce moment-là : on demande avant de les superposer.
+      detail.asking = 'staff-overlap';
+      detail.staffTo = staff;
+    }
+  });
+  let who = null;
+  if (state.staff.length && booking.status !== 'cancelled') {
+    who = h('select', { 'aria-label': 'Avec', onchange: event => assign(event.target.value) },
+      people().map(person => h('option', { value: person.id, selected: person.id === staffIdOf(booking) }, person.name)));
+  } else if (state.staff.length || booking.staffName) {
+    who = booking.staffName || staffName(booking);
+  }
+
   let actions;
   if (detail.asking === 'move' || detail.asking === 'confirm-move') {
     actions = moveControls({ confirming: detail.asking === 'confirm-move' });
+  } else if (detail.asking === 'staff-overlap') {
+    const to = people().find(p => p.id === detail.staffTo)?.name || OWNER;
+    actions = [
+      h('p', { class: 'sheet-question' }, `${to} a déjà un rendez-vous à ce moment-là. Les superposer ?`),
+      button('Oui, superposer', '', () => assign(detail.staffTo, true), 'check'),
+      button('Non', 'btn--outline', () => ask(null)),
+    ];
   } else if (detail.asking === 'overlap') {
     actions = [
       h('p', { class: 'sheet-question' }, `Rallongé à ${durationLabel(detail.resizeTo)}, ce rendez-vous déborde sur un autre. Les superposer ?`),
@@ -1550,6 +1618,7 @@ function renderDetail({ focus = false } = {}) {
       h('span', { class: 'badge badge--neutral' }, booking.source === 'salon' ? 'Saisi au salon' : 'Réservé en ligne'),
       clientsView.isBlocked(booking) ? h('span', { class: 'badge badge--blocked' }, 'Ne plus reprendre') : null),
     h('dl', { class: 'detail-list' },
+      who ? row('Avec', who) : null,
       row('Prestation', booking.serviceName),
       row('Date', capitalize(formatLong(booking.date))),
       row('Heure', hoursLabel(booking)),
@@ -1581,7 +1650,7 @@ function renderDetail({ focus = false } = {}) {
 
 // — Nouveau rendez-vous, saisi par la coiffeuse —
 
-function openNewBooking({ date = '', time = '', name: knownName = '', phone: knownPhone = '' } = {}) {
+function openNewBooking({ date = '', time = '', name: knownName = '', phone: knownPhone = '', staff: knownStaff = '' } = {}) {
   const sheet = openSheet({ eyebrow: 'Saisie au salon', title: 'Nouveau rendez-vous' });
   const error = h('p', { class: 'notice notice--error', role: 'alert', hidden: true });
   const categories = [...new Set(config.services.map(service => service.category))];
@@ -1595,7 +1664,41 @@ function openNewBooking({ date = '', time = '', name: knownName = '', phone: kno
   // Depuis une fiche client : le nom et le téléphone sont déjà connus.
   name.value = knownName;
   phone.value = knownPhone;
+  // Sinon, en tapant le nom (ou le numéro) : les fiches qui existent déjà. En choisir une range le
+  // rendez-vous sur cette fiche (même nom, même numéro) au lieu d'en créer une nouvelle.
+  const suggestions = h('div', { class: 'client-suggest', hidden: true, 'aria-live': 'polite' });
+  let picked = knownName ? { name: knownName, phone: knownPhone } : null;
+  const suggestFor = text => {
+    if (picked && name.value === picked.name && phone.value === picked.phone) {
+      suggestions.replaceChildren(h('p', { class: 'client-suggest-picked' }, icon('check'), `Fiche de ${picked.name}`));
+      suggestions.hidden = false;
+      return;
+    }
+    picked = null;
+    const found = clientsView.suggest(text);
+    suggestions.hidden = !found.length;
+    suggestions.replaceChildren(...(found.length ? [
+      h('p', { class: 'client-suggest-title' }, 'Déjà cliente ? Touchez sa fiche :'),
+      ...found.map(client => h('button', {
+        type: 'button', class: 'client-suggest-item',
+        onclick: () => {
+          name.value = client.name;
+          phone.value = client.phone;
+          picked = { name: client.name, phone: client.phone };
+          suggestFor('');
+        },
+      }, h('strong', {}, client.name), h('span', {}, [client.phone, client.summary].filter(Boolean).join(' · ')),
+      client.note ? h('span', { class: 'client-suggest-note' }, client.note) : null)),
+    ] : []));
+  };
+  name.addEventListener('input', debounce(() => suggestFor(name.value), 120));
+  phone.addEventListener('input', debounce(() => { if (!name.value.trim()) suggestFor(phone.value); }, 120));
+  if (picked) suggestFor('');
   const note = h('input', { name: 'note', type: 'text', maxlength: '200', autocomplete: 'off' });
+  // Avec des employées : sur quelle ligne de l'agenda (la ligne cliquée dans la journée, sinon la coiffeuse).
+  const staff = state.staff.length
+    ? h('select', { name: 'staff' }, people().map(person => h('option', { value: person.id, selected: person.id === knownStaff }, person.name)))
+    : null;
   // Les e-mails aux clients en service : le client avec une adresse reçoit la confirmation et le rappel.
   const email = config.mail ? h('input', { name: 'email', type: 'email', inputmode: 'email', maxlength: '120', autocomplete: 'off' }) : null;
   const submitLabel = h('span', {}, 'Enregistrer');
@@ -1607,7 +1710,7 @@ function openNewBooking({ date = '', time = '', name: knownName = '', phone: kno
   const describe = () => {
     const overlapping = taken.has(slot.value);
     submitLabel.textContent = overlapping ? 'Enregistrer en superposant' : 'Enregistrer';
-    overlap.textContent = overlapping ? overlapNote(day.value, slot.value, durationOf()) : '';
+    overlap.textContent = overlapping ? overlapNote(day.value, slot.value, durationOf(), '', staff?.value || '') : '';
   };
 
   const fail = message => {
@@ -1628,7 +1731,8 @@ function openNewBooking({ date = '', time = '', name: knownName = '', phone: kno
     }
     slot.replaceChildren(h('option', { value: '' }, 'Chargement…'));
     try {
-      const result = await call(`/api/availability?service=${service.value}&date=${day.value}&salon=1`);
+      const who = staff?.value ? `&staff=${encodeURIComponent(staff.value)}` : '';
+      const result = await call(`/api/availability?service=${service.value}&date=${day.value}&salon=1${who}`);
       if (current !== request) return;
       if (!result.slots.length) {
         slot.replaceChildren(h('option', { value: '' }, result.closed ? 'Salon fermé ce jour-là' : 'Aucune heure possible'));
@@ -1651,14 +1755,17 @@ function openNewBooking({ date = '', time = '', name: knownName = '', phone: kno
   });
   service.addEventListener('change', loadTimes);
   day.addEventListener('change', loadTimes);
+  staff?.addEventListener('change', loadTimes);
 
   const form = h('form', { class: 'sheet-form', novalidate: true },
+    staff ? field({ id: 'nouveau-avec', label: 'Avec', control: staff }) : null,
     field({ id: 'nouveau-prestation', label: 'Prestation', control: service }),
     h('div', { class: 'field-row' },
       field({ id: 'nouveau-date', label: 'Date', control: day }),
       field({ id: 'nouveau-heure', label: 'Heure', control: slot })),
     overlap,
     field({ id: 'nouveau-nom', label: 'Nom du client', control: name }),
+    suggestions,
     field({ id: 'nouveau-telephone', label: 'Téléphone', optional: true, control: phone }),
     email ? field({ id: 'nouveau-email', label: 'E-mail', optional: true, hint: 'Le client reçoit la confirmation et un rappel la veille.', control: email }) : null,
     field({ id: 'nouveau-note', label: 'Note', optional: true, control: note }),
@@ -1680,6 +1787,7 @@ function openNewBooking({ date = '', time = '', name: knownName = '', phone: kno
         body: {
           serviceId: service.value, date: day.value, time: slot.value, name: name.value, phone: phone.value, note: note.value,
           ...(email && { email: email.value }),
+          ...(staff && { staff: staff.value }),
           force: taken.has(slot.value),
         },
       });

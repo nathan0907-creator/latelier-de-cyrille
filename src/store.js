@@ -40,6 +40,7 @@ const FILES = {
   salonDevices: 'appareils-salon.json',
   mailTexts: 'textes-emails.json',
   salonEvent: 'evenement.json',
+  staff: 'employees.json',
 };
 
 /** Le dossier des photos déposées depuis l'espace salon, dans data/. */
@@ -97,6 +98,7 @@ function createStore(target) {
     salonDevices: backend.read('salonDevices', []),
     mailTexts: backend.read('mailTexts', {}),
     salonEvent: backend.read('salonEvent', null),
+    staff: backend.read('staff', []),
   };
   const save = key => backend.write(key, state[key]);
 
@@ -128,6 +130,21 @@ function createStore(target) {
         state.bookings = state.bookings.filter(b => !predicate(b));
         if (state.bookings.length !== before) save('bookings');
         return before - state.bookings.length;
+      },
+      /** Modifie d'un coup tous les rendez-vous choisis (un seul enregistrement) ; renvoie ceux modifiés. */
+      updateWhere(predicate, patch) {
+        const changed = state.bookings.filter(b => predicate(b));
+        for (const booking of changed) Object.assign(booking, patch);
+        if (changed.length) save('bookings');
+        return changed;
+      },
+    },
+    /** Les employées du salon, en plus de la coiffeuse : une ligne chacune dans l'agenda (voir src/staff.js). */
+    staff: {
+      all: () => state.staff,
+      set(list) {
+        state.staff = list;
+        save('staff');
       },
     },
     closures: {

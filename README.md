@@ -229,6 +229,17 @@ Les réponses des clients vont à l'adresse e-mail du salon, si elle est renseig
 
 Le texte de chaque e-mail se change dans l'espace salon, onglet **E-mails** : objet et texte, avec `{prenom}`, `{date}`, `{heure}`, `{prestation}`… remplis pour chaque client, un aperçu, « M'envoyer un essai » et « Revenir au texte d'origine ». Les textes sont gardés dans `data/textes-emails.json`.
 
+### 5 bis. Le rappel par SMS la veille (facultatif, gratuit)
+
+24 h avant le rendez-vous, chaque client qui a laissé son numéro reçoit un SMS : « Bonjour Léa, petit rappel : rendez-vous demain, mardi 13 octobre, à 14h chez L'atelier de Cyrille (Coupe). Un empêchement ? Prévenez au … ». Pas de service payant : les SMS partent **d'un téléphone Android du salon**, avec son forfait (les SMS illimités suffisent ; un vieux téléphone avec une carte à 2 €/mois fait l'affaire), grâce à l'application gratuite et libre **SMS Gateway for Android**.
+
+1. Sur le téléphone Android (Android 5 ou plus) : installer **SMS Gateway for Android**. Elle n'est pas sur le Play Store : télécharger le fichier APK depuis https://sms-gate.app (page GitHub « Releases »), autoriser l'installation d'applications inconnues ; si Play Protect avertit, « Installer quand même ». L'ouvrir et autoriser l'envoi de SMS.
+2. Dans l'application : activer **Cloud Server**, puis sur l'accueil **Start Service**, et **Sign Up** (compte anonyme, rien à saisir). Une fois connectée, la rubrique Cloud Server affiche un **identifiant** (Username) et un **mot de passe** (Password).
+3. Dans le Worker sur Cloudflare : **Settings** → **Variables and Secrets** : deux secrets, `SMS_GATE_USER` (l'identifiant) et `SMS_GATE_PASSWORD` (le mot de passe). Sur l'ordinateur du salon, les mêmes noms en variables d'environnement.
+4. Dans l'espace salon, onglet **E-mails et SMS** : « M'envoyer un SMS d'essai ».
+
+Le téléphone doit rester allumé avec une connexion Internet (Wi-Fi ou données) : c'est lui qui envoie. Les SMS partent de son numéro, et les clients peuvent y répondre. Dans les réglages Android, retirer l'application de l'« optimisation de la batterie », sinon le téléphone peut l'endormir.
+
 ### 6. Un site d'essai
 
 Un second site, `latelier-de-cyrille-essai`, pour tout essayer (réserver, annuler, valider, recevoir les alertes) sans toucher au vrai : ses rendez-vous, son compte et ses alertes sont à part. Son nom porte « (site d'essai) » et il n'apparaît pas sur Google.

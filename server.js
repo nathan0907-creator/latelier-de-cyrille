@@ -46,7 +46,12 @@ async function main() {
   }
 
   // Les e-mails aux clients (facultatif) : BREVO_API_KEY et MAIL_FROM, voir le README.
-  const app = createApp({ config, store, mail: { apiKey: process.env.BREVO_API_KEY || '', from: process.env.MAIL_FROM || '' } });
+  const app = createApp({
+    config, store,
+    mail: { apiKey: process.env.BREVO_API_KEY || '', from: process.env.MAIL_FROM || '' },
+    // Le rappel par SMS la veille (src/sms.js) : SMS_GATE_USER et SMS_GATE_PASSWORD, voir le README.
+    smsGate: { user: process.env.SMS_GATE_USER || '', password: process.env.SMS_GATE_PASSWORD || '', url: process.env.SMS_GATE_URL || '' },
+  });
   const server = http.createServer(app.handle);
 
   let port;

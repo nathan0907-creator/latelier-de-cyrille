@@ -39,6 +39,8 @@ export class Salon extends DurableObject {
       live: { heartbeatMs: 10_000, maxPerIp: 30 },
       // Les e-mails aux clients : secrets BREVO_API_KEY et MAIL_FROM (README, « Les e-mails »).
       mail: { apiKey: env.BREVO_API_KEY || '', from: env.MAIL_FROM || '' },
+      // Le rappel par SMS la veille : secrets SMS_GATE_USER et SMS_GATE_PASSWORD (README, « Les SMS »).
+      smsGate: { user: env.SMS_GATE_USER || '', password: env.SMS_GATE_PASSWORD || '', url: env.SMS_GATE_URL || '' },
     });
     this.handle = toFetchHandler(this.app.handle);
     this.alarmPlanned = false;

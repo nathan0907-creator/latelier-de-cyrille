@@ -63,9 +63,17 @@ function busyParts(start, item) {
 /** Deux rendez-vous se gênent si la coiffeuse est occupée par les deux au même moment. */
 const clash = (a, b) => a.some(([from, to]) => b.some(([otherFrom, otherTo]) => from < otherTo && otherFrom < to));
 
+/**
+ * La personne qui s'occupe d'un rendez-vous : l'identifiant d'une employée, ou « » pour la
+ * coiffeuse (tous les rendez-vous pris en ligne, et ceux d'avant l'arrivée des employées).
+ * Chacune a sa ligne dans l'agenda : deux rendez-vous ne se gênent que chez la même personne.
+ */
+const staffOf = item => (item && typeof item.staff === 'string' ? item.staff : '');
+
 function hasConflict(bookings, date, start, item, ignoreId = null) {
   const wanted = busyParts(start, item);
-  return bookings.some(b => b.date === date && isActive(b) && b.id !== ignoreId && clash(wanted, busyParts(b.start, b)));
+  const staff = staffOf(item);
+  return bookings.some(b => b.date === date && isActive(b) && b.id !== ignoreId && staffOf(b) === staff && clash(wanted, busyParts(b.start, b)));
 }
 
 /**
@@ -73,8 +81,9 @@ function hasConflict(bookings, date, start, item, ignoreId = null) {
  * - mode « public » : fenêtre de réservation et délai minimum appliqués ;
  * - mode « salon »  : la coiffeuse note un rendez-vous n'importe quand un jour ouvert, dès aujourd'hui.
  * Un créneau n'est proposé que si la prestation tient entièrement dans une plage d'ouverture.
+ * staff : la ligne de l'agenda regardée (« » : la coiffeuse, seule à recevoir les réservations en ligne).
  */
-function daySlots({ config, bookings, closures, service, date, now, mode = 'public' }) {
+function daySlots({ config, bookings, closures, service, date, now, mode = 'public', staff = '' }) {
   const salon = mode === 'salon';
   if (date < now.date || (!salon && (date < firstBookableDate(config, now.date) || date > lastBookableDate(config, now.date)))) {
     return { closed: true, slots: [] };
@@ -82,7 +91,7 @@ function daySlots({ config, bookings, closures, service, date, now, mode = 'publ
   const ranges = openRanges(config, closures, date);
   if (!ranges.length) return { closed: true, slots: [] };
 
-  const taken = bookings.filter(b => b.date === date && isActive(b));
+  const taken = bookings.filter(b => b.date === date && isActive(b) && staffOf(b) === staff);
   const earliest = salon
     ? -Infinity
     : now.minutes + config.booking.minNoticeMinutes - daysBetween(now.date, date) * 1440;
@@ -190,6 +199,6 @@ function closurePeriods({ config, closures, now, horizon = 90 }) {
 }
 
 module.exports = {
-  isActive, pausesOf, busyParts, openRanges, isFullClosure, readDayHours, firstBookableDate, lastBookableDate, hasConflict, daySlots, monthSummary, nextSlot, nextOpenDays, slotProblem, openStatus,
+  isActive, staffOf, pausesOf, busyParts, openRanges, isFullClosure, readDayHours, firstBookableDate, lastBookableDate, hasConflict, daySlots, monthSummary, nextSlot, nextOpenDays, slotProblem, openStatus,
   closurePeriods,
 };

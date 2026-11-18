@@ -20,8 +20,10 @@ const digitsOf = phone => String(phone || '').replace(/\D/g, '');
  * Range les rendez-vous par personne. Un rendez-vous noté sans téléphone rejoint la fiche qui porte
  * le même nom, quand il n'y en a qu'une ; sinon il forme une fiche à part, rangée par nom.
  */
-export function groupClients(bookings, today) {
+export function groupClients(bookings, today, records = {}) {
   const byKey = new Map();
+  // Les fiches créées à la main existent avant leur premier rendez-vous.
+  for (const [key, record] of Object.entries(records)) if (record.manual) byKey.set(key, { key, bookings: [], record });
   const add = (key, booking) => {
     if (!byKey.has(key)) byKey.set(key, { key, bookings: [] });
     byKey.get(key).bookings.push(booking);
@@ -30,7 +32,9 @@ export function groupClients(bookings, today) {
 
   const named = new Map(); // nom → fiches avec téléphone qui le portent
   for (const client of byKey.values()) {
-    for (const name of new Set(client.bookings.map(b => normalizeName(b.name)))) {
+    if (!client.key.startsWith('tel:')) continue;
+    const names = [...client.bookings.map(b => b.name), client.record?.name].filter(Boolean);
+    for (const name of new Set(names.map(normalizeName))) {
       if (!named.has(name)) named.set(name, []);
       named.get(name).push(client.key);
     }
@@ -50,12 +54,14 @@ export function groupClients(bookings, today) {
     const counts = new Map();
     for (const booking of kept) counts.set(booking.serviceName, (counts.get(booking.serviceName) || 0) + 1);
     const usual = [...counts].sort((a, b) => b[1] - a[1])[0];
+    const name = all[0]?.name || client.record.name;
     return {
       key: client.key,
-      name: all[0].name,
-      sortName: normalizeName(all[0].name),
-      names: new Set(all.map(b => normalizeName(b.name))),
-      phone: all.find(b => b.phone)?.phone || '',
+      name,
+      sortName: normalizeName(name),
+      names: new Set([...all.map(b => b.name), client.record?.name].filter(Boolean).map(normalizeName)),
+      phone: all.find(b => b.phone)?.phone || client.record?.phone || '',
+      manual: Boolean(client.record),
       bookings: all,
       past,
       upcoming,
@@ -75,7 +81,7 @@ export function createClientsView({ state, call, toast, field, view, openSheet, 
   let count = null;
   let open = null; // la fiche ouverte : { key, sheet, dirty }
 
-  const clients = () => groupClients(state.bookings, state.today);
+  const clients = () => groupClients(state.bookings, state.today, state.clients);
   const saved = key => state.clients[key] || { note: '', blocked: false };
   const blockedBadge = () => h('span', { class: 'badge badge--blocked' }, 'Ne plus reprendre');
 
@@ -104,9 +110,11 @@ export function createClientsView({ state, call, toast, field, view, openSheet, 
     count = h('p', { class: 'clients-count', 'aria-live': 'polite' });
     body = h('div', {});
     view().replaceChildren(
-      h('p', { class: 'view-lead' }, 'Chaque personne qui a pris rendez-vous a sa fiche : ses coordonnées, ses rendez-vous, et vos notes. Elle se remplit toute seule.'),
+      h('p', { class: 'view-lead' }, 'Chaque personne qui a pris rendez-vous a sa fiche : ses coordonnées, ses rendez-vous, et vos notes. Pour quelqu’un qui n’en a pas encore, créez-la à la main.'),
       h('div', { class: 'list-tools' }, chips,
-        h('label', { class: 'search' }, icon('search'), h('span', { class: 'sr-only' }, 'Rechercher une fiche'), input)),
+        h('div', { class: 'clients-tools' },
+          h('label', { class: 'search' }, icon('search'), h('span', { class: 'sr-only' }, 'Rechercher une fiche'), input),
+          h('button', { type: 'button', class: 'btn btn--small btn--accent', onclick: () => openNewClient() }, icon('plus'), h('span', {}, 'Nouvelle fiche')))),
       count,
       body);
     render();
@@ -139,6 +147,61 @@ export function createClientsView({ state, call, toast, field, view, openSheet, 
         saved(client.key).note ? h('p', { class: 'row-note' }, saved(client.key).note.split('\n')[0]) : null),
       h('div', { class: 'row-actions' },
         h('button', { type: 'button', class: 'btn btn--small btn--outline', 'aria-label': `Fiche de ${client.name}`, onclick: () => openClient(client.key) }, h('span', {}, 'Fiche'))))));
+  }
+
+  /**
+   * Une fiche créée à la main : le nom, le téléphone, une note. « Créer et prendre rendez-vous »
+   * enchaîne sur la saisie d'un rendez-vous, nom et téléphone déjà remplis.
+   */
+  function openNewClient() {
+    const sheet = openSheet({ eyebrow: 'Fichier clients', title: 'Nouvelle fiche' });
+    const error = h('p', { class: 'notice notice--error', role: 'alert', hidden: true });
+    const name = h('input', { type: 'text', maxlength: '60', autocomplete: 'off', required: true });
+    const phone = h('input', { type: 'tel', inputmode: 'tel', maxlength: '30', autocomplete: 'off' });
+    const note = h('textarea', { rows: '3', maxlength: String(NOTE_MAX), placeholder: 'Formule de couleur, habitudes, allergie…' });
+    const create = h('button', { type: 'submit', class: 'btn btn--small', value: 'fiche' }, h('span', {}, 'Créer la fiche'), icon('check'));
+    const createAndBook = h('button', { type: 'submit', class: 'btn btn--small btn--outline', value: 'rdv' }, icon('plus'), h('span', {}, 'Créer et prendre rendez-vous'));
+    const actions = h('div', { class: 'sheet-actions' }, create, createAndBook);
+
+    const form = h('form', { class: 'sheet-form client-form', novalidate: true },
+      field({ id: 'nouvelle-fiche-nom', label: 'Nom du client', control: name }),
+      field({ id: 'nouvelle-fiche-telephone', label: 'Téléphone', optional: true, control: phone }),
+      field({ id: 'nouvelle-fiche-note', label: 'Vos notes', optional: true, control: note }),
+      error,
+      actions);
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      error.hidden = true;
+      const book = event.submitter === createAndBook;
+      if (!name.value.trim()) {
+        error.textContent = 'Indiquez le nom du client.';
+        error.hidden = false;
+        name.focus();
+        return;
+      }
+      create.disabled = true;
+      createAndBook.disabled = true;
+      try {
+        const result = await call('/api/salon/clients', { method: 'POST', body: { name: name.value, phone: phone.value, note: note.value } });
+        state.clients = result.clients;
+        render();
+        const client = clients().find(c => c.key === result.key);
+        toast(`La fiche de ${client?.name || name.value.trim()} est créée.`);
+        if (book) openNewBooking({ name: client?.name || name.value.trim(), phone: client?.phone || '' });
+        else openClient(result.key);
+      } catch (err) {
+        error.replaceChildren(err.data?.fields ? Object.values(err.data.fields).join(' ') : err.message);
+        // Elle existe déjà : un lien pour l'ouvrir.
+        if (err.data?.code === 'exists' && err.data.key) {
+          error.append(' ', h('button', { type: 'button', class: 'link', onclick: () => openClient(err.data.key) }, 'Ouvrir sa fiche'));
+        }
+        error.hidden = false;
+        create.disabled = false;
+        createAndBook.disabled = false;
+      }
+    });
+    sheet.body.replaceChildren(form);
+    name.focus();
   }
 
   /** La fiche d'un rendez-vous donné (pour y venir depuis l'agenda). */
@@ -205,6 +268,89 @@ export function createClientsView({ state, call, toast, field, view, openSheet, 
         h('span', { class: 'history-what' }, h('span', {}, booking.serviceName), h('span', {}, priceText(booking))),
         booking.date >= state.today || !isActive(booking) ? statusBadge(booking) : null)));
     const spent = client.past.reduce((sum, booking) => sum + booking.price, 0);
+    // Une fiche créée à la main, sans rendez-vous : on peut la supprimer.
+    const removable = client.manual && !client.bookings.length;
+    const remove = async () => {
+      try {
+        const result = await call('/api/salon/clients', { method: 'DELETE', body: { key: client.key } });
+        state.clients = result.clients;
+        entry.sheet.dialog.close();
+        toast(`La fiche de ${client.name} est supprimée.`);
+        render();
+      } catch (err) {
+        error.textContent = err.message;
+        error.hidden = false;
+      }
+    };
+    const removeBox = h('div', { class: 'sheet-actions', hidden: true },
+      h('p', { class: 'sheet-question' }, `Supprimer la fiche de ${client.name} ?`),
+      h('button', { type: 'button', class: 'btn btn--small btn--danger', onclick: remove }, h('span', {}, 'Oui, supprimer'), icon('trash')),
+      h('button', { type: 'button', class: 'btn btn--small btn--outline', onclick: () => { removeBox.hidden = true; } }, h('span', {}, 'Non')));
+
+    // Réunir avec une autre fiche : la même personne notée sous un autre nom, ou sans son numéro.
+    const mergeBox = h('section', { class: 'merge-box', hidden: true, 'aria-label': 'Réunir avec une autre fiche' });
+    const openMerge = () => {
+      entry.dirty = true; // pas de redessin pendant le choix
+      mergeBox.hidden = false;
+      const others = clients().filter(c => c.key !== client.key);
+      const first = normalizeName(client.name).split(' ')[0];
+      const close = others.filter(c => (first && [...c.names].some(n => n.split(' ')[0] === first))
+        || (digitsOf(client.phone) && digitsOf(c.phone) === digitsOf(client.phone)));
+      const search = h('input', { type: 'search', placeholder: 'Nom ou téléphone', autocomplete: 'off' });
+      const list = h('div', { class: 'merge-list' });
+      const ask = target => {
+        const keep = target.phone && !client.phone ? target : client;
+        list.replaceChildren(h('div', { class: 'merge-ask' },
+          h('p', { class: 'sheet-question' }, `Réunir « ${client.name} » et « ${target.name} » en une seule fiche ?`),
+          h('p', { class: 'field-hint' }, `Les rendez-vous et les notes des deux fiches seront gardés, au nom de ${keep.name}${keep.phone || target.phone || client.phone ? ` (${keep.phone || target.phone || client.phone})` : ''}.`),
+          h('div', { class: 'sheet-actions' },
+            h('button', { type: 'button', class: 'btn btn--small', onclick: () => merge(target, keep) }, h('span', {}, 'Oui, réunir'), icon('check')),
+            h('button', { type: 'button', class: 'btn btn--small btn--outline', onclick: () => fill() }, h('span', {}, 'Non')))));
+      };
+      const fill = () => {
+        const query = normalizeName(search.value);
+        const digits = digitsOf(search.value);
+        const found = !query && !digits ? close : others.filter(c => (query && [...c.names].some(n => n.includes(query)))
+          || (digits.length >= 2 && digitsOf(c.phone).includes(digits)));
+        list.replaceChildren(...(found.length ? found.slice(0, 8).map(c => h('button', { type: 'button', class: 'merge-item', onclick: () => ask(c) },
+          h('strong', {}, c.name), h('span', {}, [c.phone, summary(c)].filter(Boolean).join(' · '))))
+          : [h('p', { class: 'field-hint' }, query || digits ? 'Aucune fiche ne correspond.' : 'Cherchez la fiche en double par son nom ou son numéro.')]));
+      };
+      search.addEventListener('input', debounce(fill, 120));
+      mergeBox.replaceChildren(
+        h('h3', { class: 'history-title' }, 'Réunir avec une autre fiche'),
+        h('label', { class: 'search' }, icon('search'), h('span', { class: 'sr-only' }, 'Chercher la fiche en double'), search),
+        list,
+        h('div', { class: 'sheet-actions' }, h('button', { type: 'button', class: 'btn btn--small btn--outline', onclick: () => {
+          mergeBox.hidden = true;
+          entry.dirty = false;
+        } }, h('span', {}, 'Fermer'))));
+      fill();
+      mergeBox.scrollIntoView({ block: 'nearest' });
+      search.focus();
+    };
+    /** keep : la fiche dont on garde le nom et le numéro (celle qui a un numéro, sinon celle-ci). */
+    const merge = async (target, keep) => {
+      const other = keep === client ? target : client;
+      try {
+        const result = await call('/api/salon/clients/merge', {
+          method: 'POST',
+          body: { from: { key: other.key, ids: other.bookings.map(b => b.id) }, into: { key: keep.key, ids: keep.bookings.map(b => b.id) } },
+        });
+        for (const booking of result.bookings) {
+          const index = state.bookings.findIndex(b => b.id === booking.id);
+          if (index !== -1) state.bookings[index] = booking;
+        }
+        state.clients = result.clients;
+        entry.dirty = false;
+        toast(`Les fiches de ${client.name} et ${target.name} n'en font plus qu'une.`, { title: 'Fiches réunies' });
+        render();
+        openClient(result.key);
+      } catch (err) {
+        error.textContent = err.message;
+        error.hidden = false;
+      }
+    };
 
     open.sheet.heading.textContent = client.name;
     open.sheet.body.replaceChildren(...[
@@ -222,10 +368,14 @@ export function createClientsView({ state, call, toast, field, view, openSheet, 
       form,
       h('section', { class: 'history', 'aria-labelledby': 'fiche-historique' },
         h('h3', { id: 'fiche-historique', class: 'history-title' }, 'Historique', h('small', {}, plural(client.bookings.length, 'rendez-vous', 'rendez-vous'))),
-        h('ul', { class: 'history-list' }, history)),
+        history.length ? h('ul', { class: 'history-list' }, history) : h('p', { class: 'field-hint' }, 'Aucun rendez-vous pour le moment.')),
       h('div', { class: 'sheet-actions' },
-        h('button', { type: 'button', class: 'btn btn--small btn--outline', onclick: () => openNewBooking({ name: client.name, phone: client.phone }) },
-          icon('plus'), h('span', {}, 'Nouveau rendez-vous'))),
+        h('button', { type: 'button', class: `btn btn--small${history.length ? ' btn--outline' : ''}`, onclick: () => openNewBooking({ name: client.name, phone: client.phone }) },
+          icon('plus'), h('span', {}, 'Nouveau rendez-vous')),
+        h('button', { type: 'button', class: 'btn btn--small btn--outline', onclick: openMerge }, icon('users'), h('span', {}, 'Réunir avec une autre fiche')),
+        removable ? h('button', { type: 'button', class: 'btn btn--small btn--outline', onclick: () => { removeBox.hidden = false; } }, icon('trash'), h('span', {}, 'Supprimer la fiche')) : null),
+      removable ? removeBox : null,
+      mergeBox,
     ].filter(Boolean));
   }
 
@@ -235,5 +385,22 @@ export function createClientsView({ state, call, toast, field, view, openSheet, 
     if (open && !open.dirty) renderClient();
   }
 
-  return { mount, render: refresh, openClient, clientOf, isBlocked: booking => Boolean(saved(clientOf(booking)?.key).blocked) };
+  /**
+   * Les fiches qui ressemblent à ce qui est tapé (nom ou numéro), pour la saisie d'un rendez-vous :
+   * choisir la bonne fiche évite d'en créer une seconde pour la même personne.
+   */
+  function suggest(text) {
+    const query = normalizeName(text);
+    const digits = digitsOf(text);
+    if (query.length < 2 && digits.length < 3) return [];
+    const words = query.split(' ').filter(Boolean);
+    return clients()
+      .filter(c => (words.length && [...c.names].some(n => words.every(w => n.split(' ').some(part => part.startsWith(w)))))
+        || (digits.length >= 3 && digitsOf(c.phone).includes(digits)))
+      .sort((a, b) => ((b.last || b.next)?.date || '').localeCompare((a.last || a.next)?.date || ''))
+      .slice(0, 4)
+      .map(c => ({ key: c.key, name: c.name, phone: c.phone, summary: summary(c), note: saved(c.key).note.split('\n')[0] }));
+  }
+
+  return { mount, render: refresh, openClient, clientOf, suggest, isBlocked: booking => Boolean(saved(clientOf(booking)?.key).blocked) };
 }
