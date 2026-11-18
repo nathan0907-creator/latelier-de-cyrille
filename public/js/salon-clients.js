@@ -287,6 +287,71 @@ export function createClientsView({ state, call, toast, field, view, openSheet, 
       h('button', { type: 'button', class: 'btn btn--small btn--danger', onclick: remove }, h('span', {}, 'Oui, supprimer'), icon('trash')),
       h('button', { type: 'button', class: 'btn btn--small btn--outline', onclick: () => { removeBox.hidden = true; } }, h('span', {}, 'Non')));
 
+    // Réunir avec une autre fiche : la même personne notée sous un autre nom, ou sans son numéro.
+    const mergeBox = h('section', { class: 'merge-box', hidden: true, 'aria-label': 'Réunir avec une autre fiche' });
+    const openMerge = () => {
+      entry.dirty = true; // pas de redessin pendant le choix
+      mergeBox.hidden = false;
+      const others = clients().filter(c => c.key !== client.key);
+      const first = normalizeName(client.name).split(' ')[0];
+      const close = others.filter(c => (first && [...c.names].some(n => n.split(' ')[0] === first))
+        || (digitsOf(client.phone) && digitsOf(c.phone) === digitsOf(client.phone)));
+      const search = h('input', { type: 'search', placeholder: 'Nom ou téléphone', autocomplete: 'off' });
+      const list = h('div', { class: 'merge-list' });
+      const ask = target => {
+        const keep = target.phone && !client.phone ? target : client;
+        list.replaceChildren(h('div', { class: 'merge-ask' },
+          h('p', { class: 'sheet-question' }, `Réunir « ${client.name} » et « ${target.name} » en une seule fiche ?`),
+          h('p', { class: 'field-hint' }, `Les rendez-vous et les notes des deux fiches seront gardés, au nom de ${keep.name}${keep.phone || target.phone || client.phone ? ` (${keep.phone || target.phone || client.phone})` : ''}.`),
+          h('div', { class: 'sheet-actions' },
+            h('button', { type: 'button', class: 'btn btn--small', onclick: () => merge(target, keep) }, h('span', {}, 'Oui, réunir'), icon('check')),
+            h('button', { type: 'button', class: 'btn btn--small btn--outline', onclick: () => fill() }, h('span', {}, 'Non')))));
+      };
+      const fill = () => {
+        const query = normalizeName(search.value);
+        const digits = digitsOf(search.value);
+        const found = !query && !digits ? close : others.filter(c => (query && [...c.names].some(n => n.includes(query)))
+          || (digits.length >= 2 && digitsOf(c.phone).includes(digits)));
+        list.replaceChildren(...(found.length ? found.slice(0, 8).map(c => h('button', { type: 'button', class: 'merge-item', onclick: () => ask(c) },
+          h('strong', {}, c.name), h('span', {}, [c.phone, summary(c)].filter(Boolean).join(' · '))))
+          : [h('p', { class: 'field-hint' }, query || digits ? 'Aucune fiche ne correspond.' : 'Cherchez la fiche en double par son nom ou son numéro.')]));
+      };
+      search.addEventListener('input', debounce(fill, 120));
+      mergeBox.replaceChildren(
+        h('h3', { class: 'history-title' }, 'Réunir avec une autre fiche'),
+        h('label', { class: 'search' }, icon('search'), h('span', { class: 'sr-only' }, 'Chercher la fiche en double'), search),
+        list,
+        h('div', { class: 'sheet-actions' }, h('button', { type: 'button', class: 'btn btn--small btn--outline', onclick: () => {
+          mergeBox.hidden = true;
+          entry.dirty = false;
+        } }, h('span', {}, 'Fermer'))));
+      fill();
+      mergeBox.scrollIntoView({ block: 'nearest' });
+      search.focus();
+    };
+    /** keep : la fiche dont on garde le nom et le numéro (celle qui a un numéro, sinon celle-ci). */
+    const merge = async (target, keep) => {
+      const other = keep === client ? target : client;
+      try {
+        const result = await call('/api/salon/clients/merge', {
+          method: 'POST',
+          body: { from: { key: other.key, ids: other.bookings.map(b => b.id) }, into: { key: keep.key, ids: keep.bookings.map(b => b.id) } },
+        });
+        for (const booking of result.bookings) {
+          const index = state.bookings.findIndex(b => b.id === booking.id);
+          if (index !== -1) state.bookings[index] = booking;
+        }
+        state.clients = result.clients;
+        entry.dirty = false;
+        toast(`Les fiches de ${client.name} et ${target.name} n'en font plus qu'une.`, { title: 'Fiches réunies' });
+        render();
+        openClient(result.key);
+      } catch (err) {
+        error.textContent = err.message;
+        error.hidden = false;
+      }
+    };
+
     open.sheet.heading.textContent = client.name;
     open.sheet.body.replaceChildren(...[
       record.blocked ? h('p', { class: 'sheet-actions' }, blockedBadge()) : null,
@@ -307,8 +372,10 @@ export function createClientsView({ state, call, toast, field, view, openSheet, 
       h('div', { class: 'sheet-actions' },
         h('button', { type: 'button', class: `btn btn--small${history.length ? ' btn--outline' : ''}`, onclick: () => openNewBooking({ name: client.name, phone: client.phone }) },
           icon('plus'), h('span', {}, 'Nouveau rendez-vous')),
+        h('button', { type: 'button', class: 'btn btn--small btn--outline', onclick: openMerge }, icon('users'), h('span', {}, 'Réunir avec une autre fiche')),
         removable ? h('button', { type: 'button', class: 'btn btn--small btn--outline', onclick: () => { removeBox.hidden = false; } }, icon('trash'), h('span', {}, 'Supprimer la fiche')) : null),
       removable ? removeBox : null,
+      mergeBox,
     ].filter(Boolean));
   }
 
@@ -318,5 +385,22 @@ export function createClientsView({ state, call, toast, field, view, openSheet, 
     if (open && !open.dirty) renderClient();
   }
 
-  return { mount, render: refresh, openClient, clientOf, isBlocked: booking => Boolean(saved(clientOf(booking)?.key).blocked) };
+  /**
+   * Les fiches qui ressemblent à ce qui est tapé (nom ou numéro), pour la saisie d'un rendez-vous :
+   * choisir la bonne fiche évite d'en créer une seconde pour la même personne.
+   */
+  function suggest(text) {
+    const query = normalizeName(text);
+    const digits = digitsOf(text);
+    if (query.length < 2 && digits.length < 3) return [];
+    const words = query.split(' ').filter(Boolean);
+    return clients()
+      .filter(c => (words.length && [...c.names].some(n => words.every(w => n.split(' ').some(part => part.startsWith(w)))))
+        || (digits.length >= 3 && digitsOf(c.phone).includes(digits)))
+      .sort((a, b) => ((b.last || b.next)?.date || '').localeCompare((a.last || a.next)?.date || ''))
+      .slice(0, 4)
+      .map(c => ({ key: c.key, name: c.name, phone: c.phone, summary: summary(c), note: saved(c.key).note.split('\n')[0] }));
+  }
+
+  return { mount, render: refresh, openClient, clientOf, suggest, isBlocked: booking => Boolean(saved(clientOf(booking)?.key).blocked) };
 }

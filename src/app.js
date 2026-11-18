@@ -16,6 +16,7 @@ const { createClients } = require('./clients');
 const { createStaff } = require('./staff');
 const { createMailer, readEmail } = require('./mail');
 const { createMails } = require('./mails');
+const { createSms } = require('./sms');
 const { HttpError, clientIp, isSecure, sameOrigin, readJson, applySecurityHeaders, send, sendJson, sendHtml } = require('./http');
 const views = require('./views');
 
@@ -36,7 +37,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 function createApp({
   config: base, store, clock = () => nowInZone(base.timezone),
   setupCode, timers = true, assetVersion = createVersion(base.publicDir), serveStatic = createStatic(base.publicDir), live = {},
-  sendPush, mail = {}, mailer: givenMailer,
+  sendPush, mail = {}, mailer: givenMailer, smsGate = {}, smsRequest,
 }) {
   // La configuration « vivante » : salon.config.js, plus ce que la coiffeuse a réglé depuis son espace.
   const settings = createSettings({ base, store, keepMedia: () => imagesOf(store.salonEvent.get()) });
@@ -53,6 +54,8 @@ function createApp({
   const bookings = createBookings({ config, store, clock, closures: closedDays, acceptEmail: mailer.enabled, isBlocked: clients.isBlocked });
   const reminders = createReminders({ config, store, clock, ...(sendPush && { send: sendPush }) });
   const mails = createMails({ config, store, clock, mailer, pageOf: reminders.pageOf });
+  // Le rappel par SMS la veille (src/sms.js) : seulement avec les identifiants de SMS Gateway.
+  const sms = createSms({ config, store, clock, ...smsGate, ...(smsRequest && { request: smsRequest }) });
   /**
    * Les nouvelles du salon au client : notification sur ses appareils, e-mail s'il a laissé son
    * adresse. Attendues avant de répondre (sur Cloudflare, un envoi laissé en route peut être
@@ -135,6 +138,11 @@ function createApp({
     };
   }
 
+  /** Un rendez-vous avec téléphone : la fiche rangée au nom de la personne passe sur son numéro (notes gardées). */
+  function adoptClient(booking) {
+    if (clients.adopt(booking)) events.send('salon', 'clients', { clients: clients.all() });
+  }
+
   /** Prévient les pages ouvertes : la journée a changé (public), le détail du rendez-vous (salon). */
   function announce(kind, booking) {
     events.send('public', 'slots', { date: booking.date });
@@ -196,7 +204,9 @@ function createApp({
       const result = bookings.create(body, { mode: 'public', site: originOf(req) });
       if (!result.ok) return reject(result);
       announce('created', result.booking);
+      adoptClient(result.booking);
       mails.schedule(result.booking);
+      sms.schedule(result.booking);
       await tell(result.booking, 'received');
       await alertSalon({ title: 'Nouvelle demande de rendez-vous', body: `${result.booking.name} · ${result.booking.serviceName} · ${whenOf(result.booking)}`, tag: `demande-${result.booking.id}` });
       stats.booking();
@@ -392,6 +402,16 @@ function createApp({
       return json(201, { key: result.key, clients: result.clients });
     }
 
+    // Réunir deux fiches de la même personne ({ from: { key, ids }, into: { key, ids } }).
+    if (route === 'POST /api/salon/clients/merge') {
+      const result = clients.merge(await readJson(req, 128 * 1024));
+      if (!result.ok) return reject(result);
+      // Les rendez-vous renommés : l'agenda et les listes ouvertes se mettent à jour.
+      for (const booking of result.changed) events.send('salon', 'booking', { kind: 'updated', booking });
+      events.send('salon', 'clients', { clients: result.clients });
+      return json(200, { key: result.key, bookings: result.changed, clients: result.clients });
+    }
+
     // Supprimer une fiche créée à la main, sans rendez-vous ({ key }).
     if (route === 'DELETE /api/salon/clients') {
       const result = clients.remove((await readJson(req)).key);
@@ -437,6 +457,18 @@ function createApp({
       if (!result.ok) return reject(result);
       return json(200, mails.texts());
     }
+    // Le rappel par SMS : en service ou non, et le texte envoyé (sur un exemple).
+    const smsSample = () => ({ name: 'Léa Dupont', serviceName: config.services[0]?.name || 'Coupe', date: addDays(clock().date, 1), start: 10 * 60 });
+    if (route === 'GET /api/salon/sms') return json(200, sms.status(smsSample()));
+    // Un SMS d'essai, au numéro de la coiffeuse : pour vérifier que le téléphone relais envoie bien.
+    if (route === 'POST /api/salon/sms/test') {
+      const body = await readJson(req);
+      if (!sms.enabled) return json(409, { error: "Les SMS ne sont pas en service : les identifiants de SMS Gateway manquent." });
+      const result = await sms.send(body.to, sms.reminderText(smsSample()));
+      if (result.status === 'numéro invalide') return json(400, { error: 'Indiquez un numéro valide, par exemple 06 12 34 56 78.' });
+      return result.ok ? json(200, { ok: true }) : json(502, { error: `Le SMS n'est pas parti (${result.status}) : le téléphone relais est-il allumé, avec l'application ouverte une fois ?` });
+    }
+
     // Un essai, envoyé à l'adresse de la coiffeuse, avec un client et un rendez-vous d'exemple.
     if (route === 'POST /api/salon/mails/test') {
       const body = await readJson(req);
@@ -479,8 +511,10 @@ function createApp({
       const result = bookings.create(await readJson(req), { mode: 'salon', site: originOf(req) });
       if (!result.ok) return reject(result);
       announce('created', result.booking);
+      adoptClient(result.booking);
       // Saisi au salon, donc déjà confirmé : le client avec une adresse e-mail le reçoit.
       mails.schedule(result.booking);
+      sms.schedule(result.booking);
       await tell(result.booking, 'confirmed');
       return json(201, { booking: result.booking });
     }
@@ -526,6 +560,7 @@ function createApp({
         if (!moved.ok) return reject(moved);
         reminders.reschedule(moved.booking);
         mails.schedule(moved.booking);
+        sms.schedule(moved.booking);
         events.send('public', 'slots', { date: moved.from.date });
         const confirming = body.status === 'confirmed' && moved.booking.status === 'pending';
         const booking = confirming ? bookings.setStatus(moved.booking.id, 'confirmed').booking : moved.booking;
@@ -742,6 +777,7 @@ function createApp({
   /** Efface les vieux rendez-vous (et les fiches clients qui n'en ont plus), les sessions expirées et les compteurs des limiteurs. */
   function maintain() {
     bookings.purgeOld();
+    clients.reconcile();
     clients.purge();
     auth.sweep();
     Object.values(limits).forEach(limiter => limiter.sweep());
@@ -749,12 +785,12 @@ function createApp({
 
   /** Les rappels arrivés à échéance : notifications, puis e-mails de la veille. */
   async function tick() {
-    return (await reminders.tick()) + (await mails.tick());
+    return (await reminders.tick()) + (await mails.tick()) + (await sms.tick());
   }
 
   /** Dans combien de minutes un rappel (notification ou e-mail) doit partir, ou null. */
   function nextDue() {
-    const dues = [reminders.nextDue(), mails.nextDue()].filter(due => due !== null);
+    const dues = [reminders.nextDue(), mails.nextDue(), sms.nextDue()].filter(due => due !== null);
     return dues.length ? Math.min(...dues) : null;
   }
 

@@ -23,13 +23,44 @@ export function createMailsView({ call, toast, field, view, salonName, phone }) 
   async function mount() {
     view().replaceChildren(h('p', { class: 'empty' }, 'Chargement…'));
     let data;
+    let sms = null;
     try {
-      data = await call('/api/salon/mails');
+      [data, sms] = await Promise.all([call('/api/salon/mails'), call('/api/salon/sms').catch(() => null)]);
     } catch (err) {
       view().replaceChildren(h('p', { class: 'notice notice--error', role: 'alert' }, err.message));
       return;
     }
+    smsStatus = sms;
     render(data);
+  }
+
+  let smsStatus = null;
+
+  /** Le rappel par SMS de la veille : en service ou non, son texte, et un essai sur le téléphone de la coiffeuse. */
+  function smsCard() {
+    if (!smsStatus) return null;
+    const number = h('input', { type: 'tel', inputmode: 'tel', autocomplete: 'tel', value: phone || '', maxlength: '30' });
+    const error = h('p', { class: 'notice notice--error', role: 'alert', hidden: true });
+    const sendTest = async () => {
+      error.hidden = true;
+      try {
+        await call('/api/salon/sms/test', { method: 'POST', body: { to: number.value } });
+        toast(`SMS d'essai envoyé au ${number.value}.`, { title: 'Essai envoyé' });
+      } catch (err) {
+        error.textContent = err.message;
+        error.hidden = false;
+      }
+    };
+    return h('section', { class: 'editor-category mail-card' },
+      h('div', { class: 'mail-card-head' },
+        h('h3', {}, 'Rappel par SMS', h('span', { class: `badge ${smsStatus.enabled ? 'badge--confirmed' : 'badge--neutral'}` }, smsStatus.enabled ? 'En service' : 'Pas encore en service')),
+        h('p', { class: 'field-hint' }, '24 h avant le rendez-vous, à chaque client qui a laissé son numéro. Envoyé par le téléphone du salon (application SMS Gateway).')),
+      h('p', { class: 'mail-preview-label' }, 'Aperçu'),
+      h('div', { class: 'mail-preview' }, h('p', {}, smsStatus.example)),
+      smsStatus.enabled
+        ? [field({ id: 'sms-essai', label: 'Votre numéro, pour un essai', control: number }), error,
+          h('div', { class: 'sheet-actions' }, h('button', { type: 'button', class: 'btn btn--small btn--outline', onclick: sendTest }, h('span', {}, "M'envoyer un SMS d'essai"), icon('phone')))]
+        : h('p', { class: 'notice notice--warn' }, 'Il reste à installer l’application SMS Gateway sur le téléphone du salon et à donner ses identifiants au site.'));
   }
 
   function render(data) {
@@ -49,7 +80,7 @@ export function createMailsView({ call, toast, field, view, salonName, phone }) 
         '. Une ligne = un paragraphe. Le bouton et les informations pratiques (adresse, téléphone, itinéraire) s\'ajoutent tout seuls en bas.'),
       data.enabled ? null : h('p', { class: 'notice notice--warn' }, "Les e-mails ne sont pas encore en service (la clé Brevo manque) : vous pouvez déjà préparer les textes."),
       field({ id: 'mails-essai', label: 'Votre adresse, pour les essais', optional: true, hint: '« M\'envoyer un essai » envoie le texte enregistré à cette adresse, avec un client d\'exemple.', control: address }),
-      h('div', { class: 'editor' }, ...data.kinds.map(item => card(item, data.enabled))),
+      h('div', { class: 'editor' }, smsCard(), ...data.kinds.map(item => card(item, data.enabled))),
     );
   }
 

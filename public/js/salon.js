@@ -521,7 +521,7 @@ const TABS = [
   { key: 'hours', label: 'Horaires', icon: 'clock' },
   { key: 'photos', label: 'Photos', icon: 'image' },
   { key: 'event', label: 'Événement', icon: 'star' },
-  { key: 'mails', label: 'E-mails', icon: 'mail' },
+  { key: 'mails', label: 'E-mails et SMS', icon: 'mail' },
   { key: 'audience', label: 'Fréquentation', icon: 'eye' },
 ];
 
@@ -1664,6 +1664,36 @@ function openNewBooking({ date = '', time = '', name: knownName = '', phone: kno
   // Depuis une fiche client : le nom et le téléphone sont déjà connus.
   name.value = knownName;
   phone.value = knownPhone;
+  // Sinon, en tapant le nom (ou le numéro) : les fiches qui existent déjà. En choisir une range le
+  // rendez-vous sur cette fiche (même nom, même numéro) au lieu d'en créer une nouvelle.
+  const suggestions = h('div', { class: 'client-suggest', hidden: true, 'aria-live': 'polite' });
+  let picked = knownName ? { name: knownName, phone: knownPhone } : null;
+  const suggestFor = text => {
+    if (picked && name.value === picked.name && phone.value === picked.phone) {
+      suggestions.replaceChildren(h('p', { class: 'client-suggest-picked' }, icon('check'), `Fiche de ${picked.name}`));
+      suggestions.hidden = false;
+      return;
+    }
+    picked = null;
+    const found = clientsView.suggest(text);
+    suggestions.hidden = !found.length;
+    suggestions.replaceChildren(...(found.length ? [
+      h('p', { class: 'client-suggest-title' }, 'Déjà cliente ? Touchez sa fiche :'),
+      ...found.map(client => h('button', {
+        type: 'button', class: 'client-suggest-item',
+        onclick: () => {
+          name.value = client.name;
+          phone.value = client.phone;
+          picked = { name: client.name, phone: client.phone };
+          suggestFor('');
+        },
+      }, h('strong', {}, client.name), h('span', {}, [client.phone, client.summary].filter(Boolean).join(' · ')),
+      client.note ? h('span', { class: 'client-suggest-note' }, client.note) : null)),
+    ] : []));
+  };
+  name.addEventListener('input', debounce(() => suggestFor(name.value), 120));
+  phone.addEventListener('input', debounce(() => { if (!name.value.trim()) suggestFor(phone.value); }, 120));
+  if (picked) suggestFor('');
   const note = h('input', { name: 'note', type: 'text', maxlength: '200', autocomplete: 'off' });
   // Avec des employées : sur quelle ligne de l'agenda (la ligne cliquée dans la journée, sinon la coiffeuse).
   const staff = state.staff.length
@@ -1735,6 +1765,7 @@ function openNewBooking({ date = '', time = '', name: knownName = '', phone: kno
       field({ id: 'nouveau-heure', label: 'Heure', control: slot })),
     overlap,
     field({ id: 'nouveau-nom', label: 'Nom du client', control: name }),
+    suggestions,
     field({ id: 'nouveau-telephone', label: 'Téléphone', optional: true, control: phone }),
     email ? field({ id: 'nouveau-email', label: 'E-mail', optional: true, hint: 'Le client reçoit la confirmation et un rappel la veille.', control: email }) : null,
     field({ id: 'nouveau-note', label: 'Note', optional: true, control: note }),

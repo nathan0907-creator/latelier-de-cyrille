@@ -2012,3 +2012,76 @@
   align-items: center;
   gap: .75rem;
 }
+
+/* Saisie d'un rendez-vous : les fiches qui existent déjà, sous le nom tapé. */
+.client-suggest {
+  display: grid;
+  gap: .4rem;
+  margin-top: -.5rem;
+}
+
+.client-suggest-title {
+  color: var(--muted);
+  font-family: var(--font-label);
+  font-size: .9rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.client-suggest-item,
+.merge-item {
+  display: grid;
+  gap: .1rem;
+  width: 100%;
+  min-height: 3rem;
+  padding: .55rem .8rem;
+  border: 1px solid var(--ink);
+  border-left-width: 5px;
+  border-radius: 0;
+  background: var(--white);
+  color: var(--text);
+  text-align: left;
+}
+
+.client-suggest-item:hover,
+.client-suggest-item:focus-visible,
+.merge-item:hover,
+.merge-item:focus-visible {
+  background: var(--marker);
+}
+
+.client-suggest-item span,
+.merge-item span {
+  color: var(--muted);
+  font-size: .95rem;
+}
+
+.client-suggest-item .client-suggest-note {
+  overflow: hidden;
+  font-style: italic;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.client-suggest-picked {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  color: var(--ok);
+  font-weight: 700;
+}
+
+/* Fiche client : réunir avec une autre fiche (la même personne en double). */
+.merge-box {
+  display: grid;
+  gap: .75rem;
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border: 1px dashed var(--ink);
+}
+
+.merge-list {
+  display: grid;
+  gap: .4rem;
+}
