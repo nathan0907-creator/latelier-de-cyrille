@@ -279,7 +279,9 @@ async function loadSlots({ live = false } = {}) {
   }
   try {
     const result = await api(`/api/availability?service=${state.service.id}&date=${state.date}`);
-    if (request !== slotsRequest) return;
+    // Pendant l'envoi de la réservation, le créneau choisi apparaît pris… par ce client lui-même :
+    // on attend la réponse du site (confirmation, ou vraiment pris : 409) au lieu de conclure trop tôt.
+    if (request !== slotsRequest || state.submitting) return;
     const before = new Map(state.slots.map(slot => [slot.time, slot.available]));
     state.slots = result.slots;
     slotsKnownFor = slotsKey();
@@ -470,6 +472,12 @@ el.form.addEventListener('submit', async event => {
     }
   } finally {
     setSubmitting(false);
+    // Des créneaux ont changé pendant l'envoi, et la réservation n'est pas faite : on les relit.
+    if (state.missedSlots && state.step !== 'done') {
+      loadMonth();
+      loadSlots({ live: true });
+    }
+    state.missedSlots = false;
   }
 });
 
@@ -679,6 +687,12 @@ function connect() {
 
   source.addEventListener('slots', event => {
     if (state.step === 'done') return;
+    // En plein envoi, l'annonce vient presque toujours de cette réservation-ci : on attend la réponse
+    // (si l'envoi échoue, les créneaux sont relus à ce moment-là).
+    if (state.submitting) {
+      state.missedSlots = true;
+      return;
+    }
     let date;
     try {
       ({ date } = JSON.parse(event.data));
